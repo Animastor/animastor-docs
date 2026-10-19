@@ -45,4 +45,4 @@ appear in code.
 - [`docs/05-frontend/PLAYER_STATE.md`](../05-frontend/PLAYER_STATE.md) — Android player state (web contract)
 - [`docs/03-audit/PLAYER_AUDIT.md`](../03-audit/PLAYER_AUDIT.md) — Android player audit
 - [`docs/DONT_DO.md`](../DONT_DO.md) — player anti-patterns (relevant for web migration too)
-- [`README.md`](../../README.md) — project services (frontends/mobile)
+- [`README.md`](../README.md) — project services (frontends/mobile)

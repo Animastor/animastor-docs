@@ -65,6 +65,28 @@ All notable changes to Animastor are documented here.
   attributes were ignored; found by release lint (`b4aa6b6`).
 - Fixed: session-list error toast showed a raw `%1$s` (`04bf8f3`).
 
+### Инфраструктура — зеркало GitHub
+
+- **Удаление веток зеркалируется.** `post-receive` при удалении ветки в origin
+  (`newrev = 0`) удаляет её и на GitHub (`git push github --delete <ветка>`),
+  а не оставляет висеть.
+- **Повтор при сбое.** Репозиторий с неудачным зеркалированием попадает в
+  `/home/animastor/repos/mirror-pending`; `mirror-retry.sh` (cron, каждые
+  15 мин) повторяет `git push github --mirror` и убирает запись при успехе;
+  ошибка остаётся в списке и пишется в `mirror-errors.log`.
+- **Хук — один файл.** `/home/animastor/repos/post-receive` (исполняемый), в
+  `repos/*.git/hooks/post-receive` — симлинки вместо копий (копии
+  расходились). Проверено: ветка `mirror-test` в `animastor-docs` появилась на
+  GitHub при создании и исчезла при удалении.
+- **animastor-gpu-hub: `master` → `main`.** Владелец переименовал ветку на
+  GitHub; bare-репо переименован напрямую (`branch -m master main`,
+  `symbolic-ref HEAD refs/heads/main`), GitHub `main` = origin `main`
+  (`0f489c7`, расхождений в коммитах не было — только имя ветки).
+- **Правило удаления влитых веток.** Ветки, полностью влитые в `main`,
+  удаляются в origin (`git push origin --delete <ветка>`) — хук удаляет их на
+  GitHub; влитые ветки не накапливаются. Правило закреплено в AGENTS.md
+  (`animastor-deploy`).
+
 Parity: `architecture/ANDROID_WEB_PARITY.md` is now the canonical parity
 document (rules, decisions, chat-stream divergences).
 

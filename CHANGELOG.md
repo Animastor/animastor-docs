@@ -8,6 +8,7 @@ All notable changes to Animastor are documented here.
 
 ### Changed
 
+- Утверждены правила паритета фронтов (architecture/ANDROID_WEB_PARITY.md).
 - **`POST /api/v1/book/blank`** — mandatory owner (the book row is created
   with the caller's workspace; failure rolls back), accepts `language`
   (default title set by the backend). Backend Stage 153 (`41c101f`,

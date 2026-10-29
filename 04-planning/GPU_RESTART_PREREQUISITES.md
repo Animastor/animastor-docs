@@ -24,16 +24,21 @@
 коммита, `main` с тех пор ушёл на **41 коммит** вперёд, **22 файла** менялись
 в обеих линиях — fast-forward невозможен.
 
-**Статус: смержено с `main` в ветке (`0da4f12`), ждёт публикации пакетов и
-релиза.** `main` не тронут. Аудит и решения по 8 конфликтам:
-`reports/2026-10-29/gpu-143a-port-audit.md`. Ветка: `feature/gpu-queue-143a`.
-До релиза: опубликовать `@animastor/orchestration@0.2.0` (единственный
-неопубликованный пакет; `player@0.1.3`, `editor@0.2.0`, `assistant@0.1.1`
-уже в npm), затем approve-коммит и CI-образ.
+**Статус: в `main`, ждёт выкатки Stage 154.** 2026-10-29 ветка влита
+fast-forward (`main` `e654a58` → `a824eb4`, 34 коммита), ветка
+`feature/gpu-queue-143a` удалена в origin; `backend/package-lock.json`
+запинен на опубликованный `@animastor/orchestration@0.2.0`
+(`sha512-G98OHbid…`), approve-коммит `e2305d3` (`APPROVED_COMMIT =
+a824eb4`), образ ещё не собран, прод не менялся. Аудит и решения по 8
+конфликтам: `reports/2026-10-29/gpu-143a-port-audit.md`.
 
-Документы ветки:
-[stage143a-checkpoint.md](https://github.com/Animastor/animastor-backend/blob/feature/gpu-queue-143a/stage143a-checkpoint.md),
-[stage147-a1-and-release-plan.md](https://github.com/Animastor/animastor-backend/blob/feature/gpu-queue-143a/stage147-a1-and-release-plan.md).
+Флаги при выкатке оставить как есть: `GPU_FENCING_MODE` и
+`IU_IMAGE_VERSIONED` в `prod/.env` и compose **не заданы** (действуют
+значения по умолчанию — `observe` и «выключено»).
+
+Документы:
+[stage143a-checkpoint.md](https://github.com/Animastor/animastor-backend/blob/main/stage143a-checkpoint.md),
+[stage147-a1-and-release-plan.md](https://github.com/Animastor/animastor-backend/blob/main/stage147-a1-and-release-plan.md).
 
 ### 2. Сверить `feature/gpu-hub-monorepo-import` с `main` gpu-hub
 
@@ -61,6 +66,19 @@ Stage 150 (read-only): 478 задач `image` в workspace-lane
 Пока решение (удалить / переотправить / оставить как есть) не принято,
 воркеры не включать: хаб начнёт разбирать 478 задач по 2 книгам и 8 сиротских,
 а результат ляжет на уже накопленные артефакты.
+
+**Статус: очередь очищена 2026-10-29** (Stage 154 prep, решение владельца;
+бэкап `/home/animastor/backups/pre-queue-cleanup-20261029T125514Z/`).
+Очереди хаба были уже пусты после части 2 Stage 150 (2026-10-27) — свежая
+инвентаризация 2026-10-29 дала 0 задач и 0 в полёте, новых отправок не было
+(`Active: 0, Dispatched: 0`, за 24 ч ноль `IMAGE_DISPATCHED`). Чистились
+маркеры в PG и кэш состояний: `scene_assets` — 434 `stale` + 2 `pending` →
+421 `ready` (файл ассета валиден в `data/output`) + 15 `DELETE` (сироты без
+файла); итог 439 `ready` / 9 `placeholder`, `stale`/`pending` — 0. `scenes`:
+`is_dirty` 8 и `dirty_unit_ids` 1 → 0. Redis: `asset-state:*` 13 ключей
+удалено, все GPU-ключи (`queue:*`, `active-scenes`, `processing`,
+`running`, `dead-letter`, `processing-claimed`, `dispatch-lease/meta`) — 0.
+Тамбстоны `generation_cancellations` (2 книги) оставлены.
 
 Документы:
 [stage150-queue-inventory.md](https://github.com/Animastor/animastor-backend/blob/main/stage150-queue-inventory.md),

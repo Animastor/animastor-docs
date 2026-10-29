@@ -121,6 +121,36 @@ All notable changes to Animastor are documented here.
   `0.2.0`, затем approve и CI-образ.
 - `04-planning/GPU_RESTART_PREREQUISITES.md` п.1 — статус обновлён.
 
+### Инфраструктура — подготовка Stage 154 (GPU-очередь в `main`)
+
+- **`@animastor/orchestration@0.2.0` опубликован и запинен.**
+  `backend/package-lock.json`: integrity из registry
+  (`sha512-G98OHbid…`, сверено с tarball `orchestration-0.2.0.tgz`) вместо
+  integrity локальной пре-релизной сборки; версия и `resolved` не менялись.
+  Тесты: `3625 passing / 28 pending / 6 failing` — только ожидаемые Stage 76
+  synthetic-null.
+- **`feature/gpu-queue-143a` влита в `main` fast-forward** (`e654a58` →
+  `a824eb4`, 34 коммита, stages 114–147); ветка удалена в origin и на GitHub.
+- **Approve: `e2305d3`** (`APPROVED_COMMIT = a824eb4`). Workflow
+  `backend-ghcr-release.yml` — только `workflow_dispatch`: push approve-коммита
+  ничего не собирает и не публикует. CI и деплой **не запускались**, образ не
+  собран, прод не менялся.
+- **Очередь GPU очищена 2026-10-29** (Stage 154 prep, до выкатки). Очереди
+  хаба после части 2 Stage 150 остались пустыми (0 задач, 0 в полёте, новых
+  отправок нет). Маркеры: `scene_assets` 434 `stale` + 2 `pending` → 421
+  `ready` (файл валиден на диске) + 15 `DELETE` (сироты), итог 439 `ready` /
+  9 `placeholder`; `scenes.is_dirty` 8 и `dirty_unit_ids` 1 → 0; Redis
+  `asset-state:*` 13 ключей удалено. Тамбстоны `generation_cancellations`
+  оставлены (backend сам не отправит). Бэкап:
+  `backups/pre-queue-cleanup-20261029T125514Z/` (BGSAVE + `dump.rdb`,
+  `pg_dump` `scene_assets`/`scenes`/`generation_tasks`/
+  `generation_cancellations`).
+- **Флаги Stage 143a в проде:** `GPU_FENCING_MODE` и `IU_IMAGE_VERSIONED` не
+  заданы ни в `prod/.env`, ни в compose, ни в контейнере — действуют
+  умолчания `observe` и «выключено».
+- `04-planning/GPU_RESTART_PREREQUISITES.md` п.1 — «в `main`, ждёт выкатки
+  Stage 154»; п.3 — «очередь очищена 2026-10-29» с числами.
+
 Parity: `architecture/ANDROID_WEB_PARITY.md` is now the canonical parity
 document (rules, decisions, chat-stream divergences).
 

@@ -36,11 +36,29 @@ All notable changes to Animastor are documented here.
   logging interceptor; SSE clients now use a client without it
   (`4960b1d`).
 - **HTTP logging**: off (`NONE`) in release builds; `Cookie`, `Set-Cookie`,
-  `Authorization` redacted. Note: the APK published on the site is a
-  **debug** build (debug signing, kept for update compatibility), so BODY
-  logging (with redacted headers) is still active in it.
+  `Authorization` redacted. (0.2.0 on the site was still a debug build with
+  BODY logging; superseded by the 0.2.1 release build below.)
 - Base URL `app.animastor.org` (the previous site APK, 0.1.0, still pointed
   at `app.animastor.in`).
+
+### Android 0.2.1 (versionCode 3 — android `main` `5699746`)
+
+- **Release build with a permanent signing key** — the site now serves a
+  release APK (not debuggable, `BuildConfig.DEBUG=false` → HTTP logging
+  `NONE`). **Certificate change: the previous (debug-signed) app must be
+  uninstalled once before installing 0.2.1.** Certificate
+  `CN=Animastor, O=Animastor`, RSA 4096, valid until 2056-10-21,
+  SHA-256 `aa65465afd300876493037735ce47288f526c588609902bcf93059bcb1fefd0b`.
+- Build: `./apk-build.sh release`; Gradle reads `signing.properties` from env
+  `ANIMASTOR_SIGNING_PROPS` (no env/file → release build fails with a clear
+  error; debug unaffected). Key and `signing.properties` on the server:
+  `/home/animastor/prod/secrets/android/` (600, in `secrets.tar.zst`
+  backup), never in git. See `animastor-android/README.md` «Release
+  signing».
+- Fixed: chat bubble layout `item_chat_message.xml` had a misspelled
+  `android` namespace URI since `5a868ac` (0.2.0) — all its `android:*`
+  attributes were ignored; found by release lint (`b4aa6b6`).
+- Fixed: session-list error toast showed a raw `%1$s` (`04bf8f3`).
 
 Parity: `architecture/ANDROID_WEB_PARITY.md` is now the canonical parity
 document (rules, decisions, chat-stream divergences).

@@ -104,6 +104,23 @@ All notable changes to Animastor are documented here.
   файла, `main` +41 коммит), сверка `feature/gpu-hub-monorepo-import`,
   очистка накопленной очереди (478 + 8 задач, решение владельца).
 
+### Инфраструктура — перенос GPU-очереди (backend) в ветке
+
+- **`feature/gpu-queue-143a` смержена с `main`** (`0da4f12`, merge-коммит;
+  `main` не тронут): 32 коммита stages 114–147 + 41 коммит `main`, 22 общих
+  файла, 8 конфликтов разобрано (версии `@animastor/*`, `.mocharc.json`,
+  CHANGELOG orchestration, тест phase5, `docs/pgsql-roles-logging.md` — версия
+  `main`). Аудит: `reports/2026-10-29/gpu-143a-port-audit.md`.
+- **Тесты:** backend `3625 passing / 6 failing / 28 pending` — только 6
+  ожидаемых Stage 76 synthetic-null (базовая линия `main`: `3312 / 8 / 28`,
+  новые падения не появились); `stage143a-*` 100 passing, `gpu-*` 237 passing;
+  packages: orchestration 42, player 17 — 0 failing.
+- **Пакеты:** итог — `@animastor/orchestration@0.2.0` (включает линию
+  `0.1.7`), `player@0.1.3`, `backend` зависит от `^0.2.0` / `^0.1.3`; в
+  коммите нет `file:`/`tgz`-ссылок. Публикация: сначала orchestration
+  `0.2.0`, затем approve и CI-образ.
+- `04-planning/GPU_RESTART_PREREQUISITES.md` п.1 — статус обновлён.
+
 Parity: `architecture/ANDROID_WEB_PARITY.md` is now the canonical parity
 document (rules, decisions, chat-stream divergences).
 

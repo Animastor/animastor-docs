@@ -22,9 +22,14 @@
 
 Состояние на 2026-10-29: ответвлена от Stage 105 (`53ce504`); в ветке 32
 коммита, `main` с тех пор ушёл на **41 коммит** вперёд, **22 файла** менялись
-в обеих линиях — fast-forward невозможен. Нужны конфликтный разбор
-(не терять изменения `main` в этих 22 файлах) и прогон тестов
-`stage143a-*`, `stage146/d2`, `stage147-a1`, `stage141-ready-chain-idempotency`.
+в обеих линиях — fast-forward невозможен.
+
+**Статус: смержено с `main` в ветке (`0da4f12`), ждёт публикации пакетов и
+релиза.** `main` не тронут. Аудит и решения по 8 конфликтам:
+`reports/2026-10-29/gpu-143a-port-audit.md`. Ветка: `feature/gpu-queue-143a`.
+До релиза: опубликовать `@animastor/orchestration@0.2.0` (единственный
+неопубликованный пакет; `player@0.1.3`, `editor@0.2.0`, `assistant@0.1.1`
+уже в npm), затем approve-коммит и CI-образ.
 
 Документы ветки:
 [stage143a-checkpoint.md](https://github.com/Animastor/animastor-backend/blob/feature/gpu-queue-143a/stage143a-checkpoint.md),

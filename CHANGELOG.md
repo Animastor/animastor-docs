@@ -87,6 +87,23 @@ All notable changes to Animastor are documented here.
   GitHub; влитые ветки не накапливаются. Правило закреплено в AGENTS.md
   (`animastor-deploy`).
 
+### Инфраструктура — разбор невлитых веток (backend, gpu-hub)
+
+- **Удалено:** backend `hotfix/d1-d2-a1` (`b07b11a`) — `git cherry main` дал
+  только `-` (оба коммита patch-эквивалентны `main`); содержимое уже в `main`.
+- **В архив:** backend `wip/stage143a-uncommitted-20261028` →
+  `archive/wip/stage143a-uncommitted-20261028` (тот же `a82eaea`). Черновик
+  143a, ему не место среди рабочих веток.
+- **В feature:** backend `stage143a-foundation-phase1` →
+  `feature/gpu-queue-143a` (тот же `dc9cbac`); gpu-hub
+  `import/monorepo-gpu-hub-20261028` → `feature/gpu-hub-monorepo-import`
+  (тот же `38c09c6`). SHA не менялись, старые имена удалены в origin — хук
+  удалил их и на GitHub, `ls-remote` = origin для обоих репо.
+- **Добавлено:** `04-planning/GPU_RESTART_PREREQUISITES.md` — что сделать до
+  включения GPU-воркеров: перенос `feature/gpu-queue-143a` в `main` (22 общих
+  файла, `main` +41 коммит), сверка `feature/gpu-hub-monorepo-import`,
+  очистка накопленной очереди (478 + 8 задач, решение владельца).
+
 Parity: `architecture/ANDROID_WEB_PARITY.md` is now the canonical parity
 document (rules, decisions, chat-stream divergences).
 

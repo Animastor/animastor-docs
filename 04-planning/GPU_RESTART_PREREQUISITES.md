@@ -44,18 +44,45 @@ origin; `backend/package-lock.json` запинен на опубликованн
 
 ### 2. Сверить `feature/gpu-hub-monorepo-import` с `main` gpu-hub
 
-На 2026-10-29 ветка — это `main` (`0f489c7`) + 1 коммит, пересечений с `main`
-нет: импорт `packages/animastor-gpu-hub` микромонорепо (15 файлов,
-+1385/−289) — `scripts/fetch-pinned-assets.sh`,
+Состояние на 2026-10-29: ветка — `main` (`0f489c7`) + 1 коммит `38c09c6`
+(импорт `packages/animastor-gpu-hub` микромонорепо, 15 файлов, +1385/−289).
+Тесты пакета на ветке зелёные (`node tests/run-all.cjs` → 22 passed / 0 failed),
+но **fast-forward не выполнен**: импорт не «новее прода», а другая линия пакета,
+и в пяти местах он противоречит `main`.
+
+Что в проде: `gpu-hub` = `ghcr.io/animastor/animastor-gpu-hub@sha256:3611c644…`
+(тег `v0.2.0`), собран 2026-10-12 из `0f489c7`, в контейнере
+`/app/package.json` → `0.1.0`. Backend объявляет `@animastor/gpu-hub ^0.1.2`
+только в `devDependencies` (0.1.2 — npm-публикация линии микромонорепо, в
+прод-образ не попадает).
+
+Новее прода в импорте: версия `0.1.2` + `CHANGELOG.md` (фикс версии installer в
+`0.1.1`, канонический домен `animastor.org` в `0.1.2`), стартовый гейт целостности
+запечённых артефактов (`verifyBakedArtifacts` против `artifacts.lock.json`),
+инструменты сборки (`scripts/fetch-pinned-assets.sh`,
 `scripts/verify-staged-artifacts.sh`, `tools/g4-standalone-build.sh`,
 `tools/g5-artifact-integrity.sh`, `tools/standalone-fixture.cjs`,
-`tools/update-artifacts-lock.cjs`, `CHANGELOG.md`, обновления
-`Dockerfile`/`gpu-hub.js`/`server.js`/`package*.json`/`artifacts.lock.json`.
+`tools/update-artifacts-lock.cjs`), переработанный `Dockerfile`.
 
-Сверку повторить перед слиянием (main мог уйти):
-`git -C repos/animastor-gpu-hub.git log --oneline main..feature/gpu-hub-monorepo-import`
-и `git diff main feature/gpu-hub-monorepo-import`. `artifacts.lock.json` не
-перепубликовывать без отдельной проверки `g5-artifact-integrity.sh`.
+Старше / хуже прода в импорте: (1) нет `GET /worker-source` — 13 маршрутов
+вместо 14, а прод его отдаёт (онбординг приватного воркера, `9cf51ce`);
+(2) обратный порядок резолва артефактов — `config > baked-in > mount` без
+валидации каталога (main: `config` с громким отказом → живой mount → baked-in,
+фикс Phase 10T `d1471e1`); (3) нет `INSTALLER_PKG_DIR`; (4) `server.js` больше
+не прокидывает `WORKER_BUNDLE_DIR`/`WORKFLOW_DIR`/… в `config`, т.е. env-оверрайды
+в контейнере мертвы; (5) `artifacts.lock.json` в другом формате (release-asset
+пины, нет `sources`) и пинит старые артефакты: worker-bundle 7 файлов
+(`c59dab5d…`) против 8 (`417c0ad4…`) в main, installer-src `777e4ade…` —
+**до** фикса D3/D4 (`ff27e291…`). CI `ghcr-release.yml` (ветка его не меняет)
+читает `lock.sources` → на этом lock падает `TypeError`.
+
+**Статус: не влито, решение владельца.** Ветка `feature/gpu-hub-monorepo-import`
+оставлена в origin. Выкатка gpu-hub не выполнялась. Сборка gpu-hub — отдельный
+workflow `gpu-hub-ghcr-release` (`workflow_dispatch` с `image_tag`: пины из
+`artifacts.lock.json` → stage+verify → reproducible build → smoke → push в GHCR),
+деплой — ручной: digest в `prod/docker-compose.yml` + `up -d gpu-hub` (в
+backend-CI не входит). Подробности и набор изменений для прода — в отчёте
+`reports/2026-10-29/gpu-restart-final-prep.md`.
 
 ### 3. Очистить накопленную очередь GPU-задач — решение владельца
 
@@ -85,17 +112,70 @@ Stage 150 (read-only): 478 задач `image` в workspace-lane
 После выкатки Stage 154 (2026-10-29) очередей по-прежнему нет: 10 минут
 наблюдения — все тики `Active: 0, Dispatched: 0`, hub `queues` 0, в Redis нет
 новых `intent`/`dispatch-intent`/`iu-in-flight`/`dispatch-lease`, `scene_assets`
-— `ready` 439 / `placeholder` 9, `stale`/`pending` 0. Побочный эффект очистки
-кэша: reconcile раз в минуту логирует 8 invariant-несоответствий (`audio-orch`/
-`video-orch` в фазе `DONE` против удалённого `asset-state:*`) — действий и
-диспатчей нет; лечится пересборкой `animastor:asset-state:*` из PG (отдельная
-задача).
+— `ready` 439 / `placeholder` 9, `stale`/`pending` 0.
+
+**Побочный эффект очистки кэша — закрыт 2026-10-29.** Reconcile логировал 8
+invariant-несоответствий (`audio-orch`/`video-orch` в фазе `DONE` против
+удалённого `asset-state:*`) по 5 сценам книги `import_1786345731767_…`.
+Пересборка `asset-state` из PG штатной фазой C8 (`rebuildWorkList`,
+startup-only) к этой книге неприменима: C8 пропускает книги с тамбстоном
+отмены (fail-closed), а ручной прогон его предиката дал бы два новых
+`partial_audio_only` (audio READY без image у `sc-45c789c6`, `sc-5f18dd0f`).
+Удалены 8 осиротевших terminal-записей `audio-orch`/`video-orch` этой книги
+(бэкап `/home/animastor/backups/pre-orch-orphan-cleanup-20261029T135943Z/`,
+BGSAVE). Итог: `Full reconciliation complete: … 0 inconsistencies found` в трёх
+циклах подряд, 0 диспатчей, `scene_assets` без изменений (448 строк, тот же
+md5), `asset-state:*` остаётся осознанно пустым.
 
 Документы:
 [stage150-queue-inventory.md](https://github.com/Animastor/animastor-backend/blob/main/stage150-queue-inventory.md),
 [stage148-hotfix.md](https://github.com/Animastor/animastor-backend/blob/main/stage148-hotfix.md).
 
+## Первое включение воркера (черновик)
+
+Один воркер, одна тестовая книга, флаги по умолчанию. Цель — увидеть один
+полный цикл `dispatch → результат → публикация → reconcile` без побочных
+эффектов, а не разгрузить очередь.
+
+**Предусловия.** Пункты 1–3 закрыты; очередь хаба пуста (`/health` → `queues` 0,
+`running` 0); бэкап PG и Redis снят. Env backend: `GPU_FENCING_MODE` **не
+задан** (`observe` — поведение идентично `enforce` с Stage 131, отличается
+только громкостью логов), `IU_IMAGE_VERSIONED` **не задан** (выключен). Hub:
+`GPU_HUB_API_KEY` задан, `SHARE_FEATURES_ENABLED=0`, `gpus: 0`.
+
+**Шаги.**
+
+1. Тестовая книга только для проверки: тестовый аккаунт, `POST
+   /api/v1/book/blank {language:'en'}` → 1 глава / 1 сцена; записать `book_id`.
+   Книги и аккаунты пользователей не трогать.
+2. Запустить **один** воркер на GPU-хосте (одна карта, `workers=1`). Ждать
+   `GET /health` → `{"gpus":1,"queues":{…0},"running":0}`.
+3. Включить генерацию только на тестовой книге — `image` для одной сцены
+   (или `start` окна из одной сцены). Ничего больше не ставить в очередь.
+4. Наблюдать 3 цикла reconcile (3 мин) и до терминального состояния задачи.
+
+**Что смотреть.**
+
+| Где | Ожидание |
+|---|---|
+| backend лог | `[SCHEDULER] Active: 1, Dispatched: 1`; один `IMAGE_DISPATCHED`/`GPU Task sent` на unit; `[RECONCILE] … 0 inconsistencies`; ни одного `[INVARIANT]`, `dead-letter`, `duplicate`, `idem`-конфликта |
+| hub `/health` | `gpus:1`, `queues.image` 1 → 0, `running` 1 → 0 |
+| Redis | `dispatch-lease`/`dispatch-meta` с живым TTL (продлевается), `intent`/`receipt` парой, `iu-in-flight` исчезает по завершении, `active-scenes` 1 → 0 |
+| PG | `generation_tasks`: `queued → running → completed`; `scene_assets`: `pending → ready` ровно по тестовой сцене; `iu_image_pointers` — строка на unit (published), `iu_image_fence_reservations` — 1 |
+| диск | файл ассета по каноническому пути (`data/output`), без `tmp`/частичных файлов |
+
+**Критерии остановки (немедленно):** любой `dead-letter`; повторный диспатч
+того же `unit_id`; `[INVARIANT]`/`inconsistencies > 0`; `dispatch-lease` без
+TTL или `processing`/`running`, не убывающие после TTL; диспатч задачи вне
+тестовой книги; `scene_assets` ушёл в `stale`/`failed` без ошибки в логе;
+воркер пропал (`gpus:0`) при `running:1`. Действия при остановке: снять
+воркер с сети (не убивать backend), дождаться истечения lease, разобрать
+`dead-letter`/`intent`/`receipt`, только потом повторять. Расширять до
+нескольких воркеров/книг — после трёх чистых циклов и одной полностью
+опубликованной сцены.
+
 ## Порядок
 
-1 → 2 → 3 → включение воркеров. Пункты 1 и 2 — код/ветки, 3 — данные прода
-(только SELECT; изменение очереди — отдельная задача с бэкапом Redis).
+1 → 2 (решение владельца по импорту gpu-hub) → 3 → первое включение по разделу
+выше. Пункты 1 и 2 — код/ветки, 3 — данные прода (только SELECT; изменение
+очереди — отдельная задача с бэкапом Redis).

@@ -177,6 +177,30 @@ All notable changes to Animastor are documented here.
 Parity: `architecture/ANDROID_WEB_PARITY.md` is now the canonical parity
 document (rules, decisions, chat-stream divergences).
 
+### Инфраструктура — финальная подготовка к GPU-воркерам
+
+- **Reconcile: 8 invariant-несоответствий закрыты** (5 сцен книги
+  `import_1786345731767_…`: 5 `audio-orch` + 3 `video-orch` в `DONE` против
+  очищенного `asset-state:*`). Штатная пересборка asset-state (C8
+  `rebuildWorkList`, startup-only) неприменима: она fail-closed пропускает книги
+  с тамбстоном отмены, а её предикат дал бы 2 новых `partial_audio_only`.
+  Удалены 8 осиротевших terminal-записей `audio-orch`/`video-orch`
+  (BGSAVE-бэкап `backups/pre-orch-orphan-cleanup-20261029T135943Z/`). Проверено:
+  3 цикла `0 inconsistencies`, `[INVARIANT]` 0, диспатчей 0, `scene_assets`
+  448 строк / тот же md5, `asset-state:*` пуст.
+- **gpu-hub `feature/gpu-hub-monorepo-import` (`38c09c6`) — не влита.**
+  `tests/run-all.cjs` 22/22 зелёные, но импорт противоречит `main`: нет
+  `GET /worker-source` (13 маршрутов вместо 14), обратный порядок резолва
+  артефактов (`baked-in > mount`, без валидации env), нет `INSTALLER_PKG_DIR`,
+  `server.js` не прокидывает artifact-dir env, `artifacts.lock.json` в другом
+  формате пинит worker-bundle `c59dab5d…` (7 файлов) и installer-src
+  `777e4ade…` (до фикса `ff27e291…`); CI `ghcr-release` на таком lock падает.
+  Прод не менялся: образ `sha256:3611c644…` (тег `v0.2.0`), коммит `0f489c7`,
+  версия пакета в контейнере `0.1.0`.
+- `04-planning/GPU_RESTART_PREREQUISITES.md` — статусы A/B и новый раздел
+  «Первое включение воркера» (один воркер, одна тестовая книга, `observe`/off,
+  что смотреть в логах, критерии остановки).
+
 ---
 
 ## [Unreleased] — 2026-09-01

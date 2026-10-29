@@ -18,6 +18,9 @@
 > the existing connector `chat.delta` stream over plain HTTP SSE. Cloud
 > providers and private Local AI ride the same route with their existing
 > transports.
+>
+> **Платформы (2026-10-29):** Phase 3 — **web + Android** (Android 2026-10-29:
+> android `5a868ac`..`9d5a487`, APK 0.2.0; canonical parity: `architecture/ANDROID_WEB_PARITY.md`).
 
 ---
 
@@ -157,7 +160,8 @@ detail — nothing crosses.
   usage ledger/counters — untouched, as before.
 - Model file transfer, GPU sharing, gpu-hub, workers — untouched (D9).
 - A second AI provider system / connector protocol — none introduced.
-- Android UI mirror of the streaming UX — backend/API-ready, later step.
+- Android UI mirror of the streaming UX — shipped 2026-10-29 (android
+  `5a868ac`..`9d5a487`); see `architecture/ANDROID_WEB_PARITY.md`.
 - Cloud-branch token-level streaming (the upstream cloud call stays
   non-streaming and is re-emitted as one delta; upstream cloud SSE would
   be a separate, opt-in change).

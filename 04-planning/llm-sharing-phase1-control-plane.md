@@ -17,6 +17,9 @@
 > The shareable resource is the **inference endpoint / serving capacity** of
 > a registered connector — NOT the model file, NOT a bare GPU, NOT the
 > agent (sharing doc §5/§7).
+>
+> **Платформы (2026-10-29):** Phase 1 UI — **только web**; Android не планируется
+> (решение владельца 2026-10-29; canonical parity: `architecture/ANDROID_WEB_PARITY.md`, «Решения»).
 
 ---
 
@@ -245,8 +248,8 @@ Runtime unavailable (availability outranks sharing state), the endpoint
 name, runtime, discovered-models count, concurrency limit, enable/stop
 sharing (explicit confirm modal), delete, and create-endpoint. NEVER
 shown: credentials, local IP, runtime URL, filesystem info. Android stays
-backend-ready (control plane is API-complete); the Android mirror is a
-follow-up step.
+backend-ready (control plane is API-complete); an Android mirror is not
+planned (owner decision 2026-10-29, web-only).
 
 ## 9. Migration Safety (verified by tests)
 

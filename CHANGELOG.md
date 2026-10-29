@@ -4,6 +4,49 @@ All notable changes to Animastor are documented here.
 
 ---
 
+## 2026-10-29
+
+### Changed
+
+- **`POST /api/v1/book/blank`** — mandatory owner (the book row is created
+  with the caller's workspace; failure rolls back), accepts `language`
+  (default title set by the backend). Backend Stage 153 (`41c101f`,
+  `@animastor/editor` 0.2.0; in production: backend `12d6bf0`, digest
+  `1fde561c…`). Web sends `{ language: resolveLanguage() }` instead of a
+  hardcoded title (`38c59ad`, deployed to `www/app`). Android sends the UI
+  language (`f384cb0`, in APK 0.2.0).
+- **`ai_chat_sessions`** — `created_at` / `updated_at` are epoch **ms**
+  (column defaults in ms; startup migration multiplies second-valued rows
+  once, idempotent). Backend `8ad67e7`, in production with Stage 153.
+
+### Fixed
+
+- **Book deletion** — the `animastor:cancelled-workers:{bookId}` signal now
+  gets a 1 h TTL (it was never cleaned up for deleted books). Backend
+  `e654a58` — in backend `main`, **not yet in production**.
+
+### Android (APK 0.2.0, versionCode 2 — android `main` `2d23f49`)
+
+- **AI chat over SSE** (`POST /ai/chat/stream`, LLM Sharing Phase 3 parity):
+  incremental text, source badge (Private / Shared / Cloud / System), working
+  **Stop** button, streaming / cancelled / failed states; a mid-stream error is
+  appended to the partial answer. Android `5a868ac`..`9d5a487`.
+- **Generation progress arrives in real time** — the progress SSE (and the
+  chat stream) were buffered until the stream ended by the BODY-level OkHttp
+  logging interceptor; SSE clients now use a client without it
+  (`4960b1d`).
+- **HTTP logging**: off (`NONE`) in release builds; `Cookie`, `Set-Cookie`,
+  `Authorization` redacted. Note: the APK published on the site is a
+  **debug** build (debug signing, kept for update compatibility), so BODY
+  logging (with redacted headers) is still active in it.
+- Base URL `app.animastor.org` (the previous site APK, 0.1.0, still pointed
+  at `app.animastor.in`).
+
+Parity: `architecture/ANDROID_WEB_PARITY.md` is now the canonical parity
+document (rules, decisions, chat-stream divergences).
+
+---
+
 ## [Unreleased] — 2026-09-01
 
 ### Added

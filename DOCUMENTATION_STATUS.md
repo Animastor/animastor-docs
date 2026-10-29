@@ -27,7 +27,7 @@
 | `README.md` | **Current** | Project overview, quick start, architecture at a glance |
 | `ARCHITECTURE.md` | **Current** | Domain map (domains, auth, repository layout) — single-page reference |
 | `MEMORY.md` | **Historical** | GPU instance work notes (ComfyUI debugging, Jul–Aug 2026). Not a general architecture doc. |
-| `ANDROID_WEB_PARITY.md` | **Current** | Detailed audit of Android ↔ Web feature parity with gap tracking |
+| `ANDROID_WEB_PARITY.md` | **Deprecated** | Root copies in `animastor-android` / `animastor-web` are now a link only → canonical `docs/architecture/ANDROID_WEB_PARITY.md` (2026-10-29) |
 | `CONTRIBUTING.md` | **Current** | Contribution guidelines |
 | `SECURITY.md` | **Current** | Security policy and deployment best practices |
 | `THIRD_PARTY_NOTICES.md` | **Current** | Third-party licenses and dependencies |
@@ -332,7 +332,7 @@ Five documents describe the overall system. They have different scopes and level
 | **`docs/05-frontend/PLAYER_STATE.md`** | ✅ **Player state contract** — state machine, transitions, Android/web behavior |
 | **`docs/05-frontend/TASK_ARCHITECTURE.md`** | ✅ **Task/progress architecture** — SSE progress panel, worker display |
 | **`docs/05-frontend/EDITOR_ENTITY_CRUD.md`** | ✅ **Editor CRUD** — entity add/delete operations |
-| `ANDROID_WEB_PARITY.md` (root) | ✅ **Android ↔ Web parity** — the only document covering this area |
+| **`docs/architecture/ANDROID_WEB_PARITY.md`** | ✅ **Android ↔ Web parity** — canonical (2026-10-29): parity rules, decisions (web-only items), chat-stream divergences, checkpoints 1–5, history |
 
 ### 6. Auth, Workers, Admin
 
@@ -388,9 +388,10 @@ Five documents describe the overall system. They have different scopes and level
 | `architecture-map.md` | **Current** | As-is system map (Reconnaissance #1) |
 | `decisions.md` | **Current** | Architectural decisions D1–D14 confirmed by code |
 | `PHASE_2..7_*.md` contract/guard descriptions | **Current** | Boundary contracts (VBook, LAC/Worker/Hub, Provider Gateway, Book Model, Player/Editor) |
+| **`ANDROID_WEB_PARITY.md`** | **Current** | ✅ **Canonical Android ↔ Web parity** (2026-10-29) — the only parity document; repo copies link here |
 | `roadmap.md` | Historical | Pre-Phase-1 directions (superseded by the Final Review roadmap) |
 | Other files in `docs/architecture/` | Historical/Supporting | Point-in-time audits, deployment and phase-specific notes |
 
 ---
 
-*End of documentation status map. Updated 31 August 2026; §11 added 2026-09-06.*
+*End of documentation status map. Updated 31 August 2026; §11 added 2026-09-06; ANDROID_WEB_PARITY.md made canonical 2026-10-29.*

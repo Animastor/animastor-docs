@@ -42,7 +42,7 @@ origin; `backend/package-lock.json` запинен на опубликованн
 [stage143a-checkpoint.md](https://github.com/Animastor/animastor-backend/blob/main/stage143a-checkpoint.md),
 [stage147-a1-and-release-plan.md](https://github.com/Animastor/animastor-backend/blob/main/stage147-a1-and-release-plan.md).
 
-### 2. Сверить `feature/gpu-hub-monorepo-import` с `main` gpu-hub
+### 2. `feature/gpu-hub-monorepo-import` — проверен и заархивирован
 
 Состояние на 2026-10-29: ветка — `main` (`0f489c7`) + 1 коммит `38c09c6`
 (импорт `packages/animastor-gpu-hub` микромонорепо, 15 файлов, +1385/−289).
@@ -76,13 +76,26 @@ origin; `backend/package-lock.json` запинен на опубликованн
 **до** фикса D3/D4 (`ff27e291…`). CI `ghcr-release.yml` (ветка его не меняет)
 читает `lock.sources` → на этом lock падает `TypeError`.
 
-**Статус: не влито, решение владельца.** Ветка `feature/gpu-hub-monorepo-import`
-оставлена в origin. Выкатка gpu-hub не выполнялась. Сборка gpu-hub — отдельный
+**Статус: импорт не вливается, ветка в архиве.** Импорт старше `main`
+(`/worker-source`, Phase 10T, env-проксирование, `INSTALLER_PKG_DIR`, формат
+lock) — вести пакет по этой линии нельзя без регрессии прода; полезное из него
+(канонический домен `animastor.org`, `verifyBakedArtifacts`, инструменты сборки
+`tools/*`, `scripts/fetch-pinned-assets.sh`/`verify-staged-artifacts.sh`) —
+переносить точечно отдельными задачами при необходимости. Ветка
+`feature/gpu-hub-monorepo-import` (`38c09c6`) переименована в
+`archive/gpu-hub-monorepo-import-20261028` и больше не используется.
+Отдельно (read-only аудит 2026-10-29): в `main` gpu-hub и в образе прода
+остался один след старого домена — `gpu-hub.js:1686`,
+`publicHubUrl()` fallback `https://animastor.in/gpu` (подставляется в bootstrap
+`/installer` только при отсутствии/невалидном `Host` и незаданном
+`PUBLIC_HUB_URL`; в артефактах образа уже `animastor.org`). Выкатка gpu-hub не
+выполнялась. Сборка gpu-hub — отдельный
 workflow `gpu-hub-ghcr-release` (`workflow_dispatch` с `image_tag`: пины из
 `artifacts.lock.json` → stage+verify → reproducible build → smoke → push в GHCR),
 деплой — ручной: digest в `prod/docker-compose.yml` + `up -d gpu-hub` (в
-backend-CI не входит). Подробности и набор изменений для прода — в отчёте
-`reports/2026-10-29/gpu-restart-final-prep.md`.
+backend-CI не входит). Подробности и набор изменений для прода — в отчётах
+`reports/2026-10-29/gpu-restart-final-prep.md` и
+`reports/2026-10-29/gpu-hub-import-archive.md`.
 
 ### 3. Очистить накопленную очередь GPU-задач — решение владельца
 
@@ -176,6 +189,6 @@ TTL или `processing`/`running`, не убывающие после TTL; ди�
 
 ## Порядок
 
-1 → 2 (решение владельца по импорту gpu-hub) → 3 → первое включение по разделу
-выше. Пункты 1 и 2 — код/ветки, 3 — данные прода (только SELECT; изменение
-очереди — отдельная задача с бэкапом Redis).
+1 → 2 (импорт gpu-hub в архив — решение принято) → 3 → первое включение по
+разделу выше. Пункты 1 и 2 — код/ветки, 3 — данные прода (только SELECT;
+изменение очереди — отдельная задача с бэкапом Redis).

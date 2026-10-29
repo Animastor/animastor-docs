@@ -196,7 +196,11 @@ document (rules, decisions, chat-stream divergences).
   формате пинит worker-bundle `c59dab5d…` (7 файлов) и installer-src
   `777e4ade…` (до фикса `ff27e291…`); CI `ghcr-release` на таком lock падает.
   Прод не менялся: образ `sha256:3611c644…` (тег `v0.2.0`), коммит `0f489c7`,
-  версия пакета в контейнере `0.1.0`.
+  версия пакета в контейнере `0.1.0`. Ветка переименована в
+  `archive/gpu-hub-monorepo-import-20261028` (тот же `38c09c6`), старая удалена
+  в origin, origin == GitHub. Аудит старого домена (read-only): единственное
+  место `animastor.in` — `gpu-hub.js:1686`, `publicHubUrl()` fallback для
+  bootstrap `/installer`; в артефактах образа уже `animastor.org`.
 - `04-planning/GPU_RESTART_PREREQUISITES.md` — статусы A/B и новый раздел
   «Первое включение воркера» (один воркер, одна тестовая книга, `observe`/off,
   что смотреть в логах, критерии остановки).

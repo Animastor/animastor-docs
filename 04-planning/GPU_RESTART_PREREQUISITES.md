@@ -24,17 +24,19 @@
 коммита, `main` с тех пор ушёл на **41 коммит** вперёд, **22 файла** менялись
 в обеих линиях — fast-forward невозможен.
 
-**Статус: в `main`, ждёт выкатки Stage 154.** 2026-10-29 ветка влита
-fast-forward (`main` `e654a58` → `a824eb4`, 34 коммита), ветка
-`feature/gpu-queue-143a` удалена в origin; `backend/package-lock.json`
-запинен на опубликованный `@animastor/orchestration@0.2.0`
-(`sha512-G98OHbid…`), approve-коммит `e2305d3` (`APPROVED_COMMIT =
-a824eb4`), образ ещё не собран, прод не менялся. Аудит и решения по 8
-конфликтам: `reports/2026-10-29/gpu-143a-port-audit.md`.
+**Статус: выкачено Stage 154 (2026-10-29).** Ветка влита fast-forward
+(`main` `e654a58` → `a824eb4`, 34 коммита), `feature/gpu-queue-143a` удалена в
+origin; `backend/package-lock.json` запинен на опубликованный
+`@animastor/orchestration@0.2.0` (`sha512-G98OHbid…`), approve-коммит
+`e2305d3` (`APPROVED_COMMIT = a824eb4`). Прод: образ `deploy-e2305d3` =
+`sha256:f85470bb8ed7e1a2ef9e86afc84470a260ea3c593b42b0b482d2f885c4b3d27c`
+(было `1fde561c…`), в контейнере orchestration `0.2.0`; старт без ошибок,
+0 диспатчей, смоук пройден. Аудит и решения по 8 конфликтам:
+`reports/2026-10-29/gpu-143a-port-audit.md`.
 
-Флаги при выкатке оставить как есть: `GPU_FENCING_MODE` и
-`IU_IMAGE_VERSIONED` в `prod/.env` и compose **не заданы** (действуют
-значения по умолчанию — `observe` и «выключено»).
+Флаги оставлены как есть: `GPU_FENCING_MODE` и `IU_IMAGE_VERSIONED` в
+`prod/.env` и compose **не заданы** (действуют значения по умолчанию —
+`observe` и «выключено»).
 
 Документы:
 [stage143a-checkpoint.md](https://github.com/Animastor/animastor-backend/blob/main/stage143a-checkpoint.md),
@@ -79,6 +81,15 @@ Stage 150 (read-only): 478 задач `image` в workspace-lane
 удалено, все GPU-ключи (`queue:*`, `active-scenes`, `processing`,
 `running`, `dead-letter`, `processing-claimed`, `dispatch-lease/meta`) — 0.
 Тамбстоны `generation_cancellations` (2 книги) оставлены.
+
+После выкатки Stage 154 (2026-10-29) очередей по-прежнему нет: 10 минут
+наблюдения — все тики `Active: 0, Dispatched: 0`, hub `queues` 0, в Redis нет
+новых `intent`/`dispatch-intent`/`iu-in-flight`/`dispatch-lease`, `scene_assets`
+— `ready` 439 / `placeholder` 9, `stale`/`pending` 0. Побочный эффект очистки
+кэша: reconcile раз в минуту логирует 8 invariant-несоответствий (`audio-orch`/
+`video-orch` в фазе `DONE` против удалённого `asset-state:*`) — действий и
+диспатчей нет; лечится пересборкой `animastor:asset-state:*` из PG (отдельная
+задача).
 
 Документы:
 [stage150-queue-inventory.md](https://github.com/Animastor/animastor-backend/blob/main/stage150-queue-inventory.md),

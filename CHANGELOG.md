@@ -151,6 +151,29 @@ All notable changes to Animastor are documented here.
 - `04-planning/GPU_RESTART_PREREQUISITES.md` п.1 — «в `main`, ждёт выкатки
   Stage 154»; п.3 — «очередь очищена 2026-10-29» с числами.
 
+### GPU в проде — Stage 154 (backend `e2305d3`, digest `f85470bb…`)
+
+- **Выкачено.** GPU-очередь 143a (stages 114–147, 32 коммита) +
+  `@animastor/orchestration` 0.2.0: идемпотентная отправка задачи, intent-fence,
+  атомарная публикация результата (pointer), versioned image-пути под
+  `IU_IMAGE_VERSIONED`. Плюс TTL 1 ч у `animastor:cancelled-workers:{bookId}`.
+- Digest `1fde561c…` → `f85470bb…`, тег `deploy-e2305d3`, revision
+  `e2305d3f…`; в образе orchestration 0.2.0 / editor 0.2.0 / player 0.1.3 /
+  assistant 0.1.1. Deploy-коммит animastor-deploy `a04fd4f`, пересоздан только
+  `animastor-backend` (13:28:20Z).
+- Флаги `GPU_FENCING_MODE` и `IU_IMAGE_VERSIONED` не заданы (умолчания
+  `observe` / «выключено»).
+- Проверки: 0 ошибок старта, DDL `iu_image_*` не выполнялся (набор таблиц 43
+  не изменился), `/health` 200, 10 мин — 129 тиков `Active: 0, Dispatched: 0`,
+  hub и Redis без задач, `scene_assets` без `stale`/`pending`; смоук на
+  тестовом аккаунте (книга, AI-сессия в мс, удаление — диск/PG/Redis 0,
+  `cancelled-workers` TTL 3595 с). Откат: `1fde561c…` + `up -d backend` (PG не
+  восстанавливать — миграций нет).
+- Наблюдение: reconcile раз в минуту логирует 8 invariant-несоответствий
+  `audio-orch`/`video-orch` против очищенного `asset-state:*` — действий и
+  диспатчей нет; таблицы `iu_image_pointers`/`iu_image_fence_reservations`
+  существовали до выкатки (пусты).
+
 Parity: `architecture/ANDROID_WEB_PARITY.md` is now the canonical parity
 document (rules, decisions, chat-stream divergences).
 

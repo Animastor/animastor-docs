@@ -205,6 +205,23 @@ document (rules, decisions, chat-stream divergences).
   «Первое включение воркера» (один воркер, одна тестовая книга, `observe`/off,
   что смотреть в логах, критерии остановки).
 
+### gpu-hub — канонический домен в bootstrap `/installer`
+
+- **`PUBLIC_HUB_URL` задан в проде.** animastor-deploy `f18e556`: сервис
+  `gpu-hub` → `PUBLIC_HUB_URL=https://animastor.org/gpu`; пересоздан только
+  `gpu-hub` (pg/redis/proxy — прежний аптайм). Проверено: env контейнера,
+  `/health` 200 `{"gpus":0,…,"running":0}`, публичный
+  `https://animastor.org/gpu/installer` — только `animastor.org` (до правки
+  тоже `.org`, другим путём — через `Host`).
+- **Fallback `.in` исправлен в `main` gpu-hub** (`a1e1589`):
+  `publicHubUrl()` → `https://animastor.org/gpu`; `server.js` (и standalone-блок)
+  теперь прокидывает `PUBLIC_HUB_URL` в config — до этого env-ключ был мёртв в
+  контейнере; `publicHubUrl` открыт для тестов, 4 проверки (fallback, приоритет
+  env, проброс в `server.js`, отсутствие `animastor.in` в исходниках),
+  `tests/run-all.cjs` 27/27. **Образ не пересобран** — уйдёт со следующим
+  релизом хаба; до него прямой вызов контейнера без `Host` отдаёт `.in`
+  (образ `0.1.0`).
+
 ---
 
 ## [Unreleased] — 2026-09-01

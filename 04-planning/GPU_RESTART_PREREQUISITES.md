@@ -84,11 +84,15 @@ lock) — вести пакет по этой линии нельзя без р�
 переносить точечно отдельными задачами при необходимости. Ветка
 `feature/gpu-hub-monorepo-import` (`38c09c6`) переименована в
 `archive/gpu-hub-monorepo-import-20261028` и больше не используется.
-Отдельно (read-only аудит 2026-10-29): в `main` gpu-hub и в образе прода
-остался один след старого домена — `gpu-hub.js:1686`,
-`publicHubUrl()` fallback `https://animastor.in/gpu` (подставляется в bootstrap
-`/installer` только при отсутствии/невалидном `Host` и незаданном
-`PUBLIC_HUB_URL`; в артефактах образа уже `animastor.org`). Выкатка gpu-hub не
+**Старый домен закрыт 2026-10-29.** `PUBLIC_HUB_URL=https://animastor.org/gpu`
+задан в `prod/docker-compose.yml` (animastor-deploy `f18e556`, пересоздан только
+`gpu-hub`); в `main` gpu-hub `publicHubUrl()` fallback исправлен на
+`https://animastor.org/gpu`, а `PUBLIC_HUB_URL` теперь прокидывается из
+`server.js` (раньше env-ключ был мёртв), тесты 27/27 (`a1e1589`). **Образ
+gpu-hub не пересобирался** — правка уйдёт со следующим релизом хаба; до него
+прямой вызов контейнера без валидного `Host` всё ещё отдаёт `.in` (в образе
+`0.1.0` `server.js` не читает `PUBLIC_HUB_URL`), а публичный
+`https://animastor.org/gpu/installer` — уже `.org`. Выкатка gpu-hub не
 выполнялась. Сборка gpu-hub — отдельный
 workflow `gpu-hub-ghcr-release` (`workflow_dispatch` с `image_tag`: пины из
 `artifacts.lock.json` → stage+verify → reproducible build → smoke → push в GHCR),

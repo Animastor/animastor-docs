@@ -21,6 +21,11 @@ All notable changes to Animastor are documented here.
 
 ### Fixed
 
+- **Web AI chat: SSE `event: error` frame** — the frame was ignored and the
+  turn was shown as a successful answer (partial text or tool results). It now
+  marks the turn failed (localized text by error code, partial answer kept),
+  same as Android. Web `609b8b1` — in web `main`, **not yet deployed to
+  `www/app`**.
 - **Book deletion** — the `animastor:cancelled-workers:{bookId}` signal now
   gets a 1 h TTL (it was never cleaned up for deleted books). Backend
   `e654a58` — in backend `main`, **not yet in production**.

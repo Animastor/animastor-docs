@@ -62,7 +62,7 @@
 
 | Поведение | Web | Android | Кто прав | Итоговый статус |
 |---|---|---|---|---|
-| SSE-кадр `event:error` | `onError` пустой — ошибка игнорируется, ответ показывается как успешный (streamedText или tool-results) | пузырь `failed`, текст по коду (`streamErrorKey`) | Android | **Открыто: баг web.** Android не меняется |
+| SSE-кадр `event:error` | кадр запоминается, `resolveStreamOutcome` → failed даже после частичного текста; пузырь `failed`, текст по коду (`streamErrorKey`) — общая ветка с ошибкой HTTP/сети | пузырь `failed`, текст по коду (`streamErrorKey`) | Android (был баг web) | PARITY (web `609b8b1`) |
 | Ошибка посреди стрима (сеть/HTTP) | `частичный ответ\n\nошибка`, failed | то же | — | PARITY (android `4960b1d`) |
 | Текст для неизвестного кода ошибки | `tf('ai_error', message \|\| 'stream failed')` | `getString(ai_error, message ?: "stream failed")` | — | PARITY (android `9d5a487`) |
 | assistant-ход в истории после ошибки/отмены | только если streamedText не пуст | то же | — | PARITY (android `9d5a487`) |

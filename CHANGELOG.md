@@ -12,9 +12,9 @@ All notable changes to Animastor are documented here.
   рестарт ноды** (второй проход E2E 30.10: `python3.X-venv` требовался в
   `existing` при найденном ComfyUI и моделях, повторная установка дала
   `0 key(s) preserved, 8 added` и снова спросила ключ, после рестарта ноды
-  пропадала команда `animastor`). Коммиты: backend `c5cbd3c`
+  пропадала команда `animastor`). Коммиты: backend `f9d1e26`
   (`@animastor/installer` 0.2.1), gpu-hub — repin `artifacts.lock.json`
-  (`installer-src` на `c5cbd3c`).
+  (`installer-src` на `f9d1e26`).
   - **Пререквизиты ставятся на месте.** Root или `sudo -n true` → один вопрос
     `Install <pkg> now? [Y/n]` (Enter = да) → `apt-get install -y`;
     `apt-get update` — максимум один раз и только если apt сообщил об устаревшем

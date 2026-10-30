@@ -7,7 +7,7 @@
 > **Состояние на 2026-10-29:** android `main` `2d23f49` (0.2.0, versionCode 2),
 > web `main` `38c59ad`.
 
-Содержание: Правила паритета · Решения · Расхождения чата · Аудит
+Содержание: Правила паритета · Решения · Открытые GAP · Расхождения чата · Аудит
 (чекпойнты 1–5) · История (карта 2026-08-21).
 
 ---
@@ -55,6 +55,14 @@
 | 2026-10-29 | LLM Sharing **Phase 2** (consumer resolver) — серверный; Android получает эффект через `/ai/chat/stream`, клиентского API нет. | вывод аудита | BACKEND-ONLY |
 | 2026-10-29 | LLM Sharing **Phase 3** (SSE-чат) — реализован на Android: `5a868ac`..`9d5a487` (в main, APK 0.2.0). | — | GAP → FIXED |
 | 2026-09-02 | Срок шаринга воркера на Android — пресеты (1ч / 4ч / до остановки) вместо `datetime-local` (§10 worker-sharing-model-design). | — | ANDROID-ONLY |
+
+---
+
+## Открытые GAP
+
+| Дата | Web | Android сейчас | Причина / как закрыть | Тег |
+|---|---|---|---|---|
+| 2026-10-30 | Шаг установки воркера — ОДНА команда `curl -fsSL "<url>" \| bash` (URL в кавычках): `normalizeInstallSteps()` сливает старые шаги `download-bootstrap` + `run-bootstrap`, `bootstrapOneLiner()` (web `afd0b70`, `@animastor/web-workers` 0.1.1); текст `worker_setup_step_run_bootstrap_body` (ru/en) — «скопируйте команду целиком (одной строкой)…, итог ✓/✗». | `WorkerSetupWizardFragment` выводит `step.code` из Setup Contract как есть: при старом контракте backend — `curl -fsSL -o animastor-installer.sh <url>` без кавычек + `bash animastor-installer.sh`; старый текст `worker_setup_step_run_bootstrap_body` в `strings.xml`. | Android вне состава задачи «GPU-установщик UX» (нужны `testDebugUnitTest` + `apk-build.sh release`). Закрыть: перенести `bootstrapOneLiner`/`normalizeInstallSteps` в `WorkerSetupHelpers.kt` с JVM-тестами на тех же фикстурах + текст в `strings.xml` (ru/en). После выкатки backend с `@animastor/installer` ≥ 0.2.0 контракт сам отдаёт одну команду в кавычках — Android покажет её без правок кода, останется только текст. | ANDROID GAP |
 
 ---
 

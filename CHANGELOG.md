@@ -6,6 +6,77 @@ All notable changes to Animastor are documented here.
 
 ## 2026-10-30
 
+### Changed
+
+- **GPU-установщик воркера — одна команда и честный итог** (по прогону E2E
+  30.10: V100, ComfyUI и модели Qwen3-TTS уже стояли). Коммиты в `main`:
+  backend `057cea2` + `6048569` (`@animastor/installer` 0.2.0), worker
+  `3602b10` (бандл 2.2.0), gpu-hub `0dc9071` (bootstrap 1.2.0) + `18bc392`
+  (repin `artifacts.lock.json` на worker `3602b10` / backend `6048569`),
+  web `afd0b70` (`@animastor/web-workers` 0.1.1).
+  - Команда установки — **одна строка** `curl -fsSL "<url>" | bash`, URL в
+    кавычках (без кавычек `&` уводил команду в фон, терялись `mode`/`platform`
+    → `Mode: managed`). Setup Contract: один шаг `run-bootstrap`; веб сливает
+    старые два шага сам (`normalizeInstallSteps`).
+  - Работа через пайп: весь интерактив и скрытый ввод ключа — из `/dev/tty`;
+    bootstrap целиком в `main()`, stdin установщика — терминал; без TTY —
+    понятная ошибка (exit 3). Двойной вывод меню убран (свой построчный
+    редактор вместо readline; план не повторяет вопросы).
+  - Режим: без `--mode` найденный ComfyUI (в `~/ComfyUI` или корень
+    запущенного процесса) → `existing`; молчаливого `managed` нет; флаги CLI
+    (`| bash -s -- --mode …`) переопределяют вшитые значения.
+  - Детект моделей: папки из `extra_model_paths.yaml`; метафайлы репозитория
+    (`.gitattributes`, `README.md`, `configuration.json`) не делают модель
+    «incomplete»; причина incomplete — список отсутствующих файлов / `.part`;
+    качаются только отсутствующие файлы; в плане — только реально
+    отсутствующее с размером.
+  - Авто-исправление одним вопросом «Исправить?»: `WORKER_TYPE` из профиля,
+    `NODE_BIN` (Node ≥ 20 — тот же бинарь у установщика, `start-worker.sh` и
+    `animastor`), `COMFY_URL` пробой (`127.0.0.1` без префикса, notebook-префикс
+    только если без него не отвечает) + `NOTEBOOK_PATH`, устаревший бандл
+    воркера (обновление, `.env` сохраняется), `npm ci` — только если бандл
+    объявляет зависимости. **Решение:** бандл воркера остаётся без
+    зависимостей (Node 20 global fetch) — `npm install` на машине не нужен;
+    причина «не стартовал без npm install» была в проверке `node-fetch`,
+    которого бандл не использует (проверка убрана).
+  - Шаг «start worker» = done только после `ComfyUI ready` в логе воркера;
+    итог — e2e: ComfyUI API → воркер `ComfyUI ready` → heartbeat на хабе
+    (маркер воркера `Hub heartbeat accepted — worker is ONLINE`). Каждый ✗ —
+    одна строка причины + точная команда (`animastor doctor`,
+    `animastor doctor --new-key`, …); все ✓ — «Done — return to the Animastor
+    page». «scroll up» убран.
+  - Инструменты: `animastor start|stop|status|logs|doctor` в PATH
+    (`~/.local/bin`, root → `/usr/local/bin`) на постоянную копию установщика
+    `~/animastor/installer`; `doctor` — идемпотентный повторный прогон;
+    повторный запуск ничего не перекачивает.
+  - ASCII-баннер ANIMASTOR с версиями (installer, worker bundle, profile, hub,
+    bootstrap). `audio/qwen-tts`: `gpu_min_vram_gb = 12` (оценка, вывод в
+    `hardware.derivation`).
+  - `start-worker.sh`: тип из `.env` (аргумент только переопределяет), Node ≥ 20,
+    ждёт ComfyUI до выбора префикса, `READY` только после `ComfyUI ready`
+    (таймаут → причина + путь к логу).
+  - Документ: `04-planning/INSTALLER_ARCHITECTURE.md` §7, §7.1.
+
+### Fixed
+
+- **Установщик:** `resolveRepoRoot()` в распакованном бандле хаба указывал
+  за его пределы — бандл воркера и workflows из tarball не находились;
+  `io.fs.statSync` не отдавал `mtimeMs` — проверка «.env новее процесса
+  воркера» всегда была false (воркер не перезапускался после правки `.env`);
+  обёртки management-tools указывали на `cli.js` во временном каталоге
+  bootstrap (удаляется на выходе).
+- **`artifacts.lock.json`:** текст формулы digest приведён к реализации
+  (строки упорядочены по relpath) — закрыт known issue ниже.
+
+### Not done (owner decisions)
+
+- Релиз хаба (`gpu-hub-ghcr-release`, workflow_dispatch) с `a1e1589` +
+  `0dc9071` + repin `18bc392` и выкатка на прод — по решению владельца.
+- Публикация в npm `@animastor/installer` 0.2.0 (backend до неё и бампа
+  зависимости отдаёт старый двухшаговый контракт) и `@animastor/web-workers`
+  0.1.1 + обновление lock приложения (до этого веб-UI — пакет 0.1.0).
+- Android: ANDROID GAP — `architecture/ANDROID_WEB_PARITY.md` «Открытые GAP».
+
 ### Verified
 
 - **GPU-цепочка (воркер → hub → backend) — совместимость и сухой прогон.**
@@ -33,10 +104,10 @@ All notable changes to Animastor are documented here.
   `no_active_dispatch` (dispatch-identity теряется); восстановление идёт
   повторным диспатчем через worklist (одна лишняя генерация). Для `observe`
   не блокер, кандидат на улучшение отдельной задачей.
-- **`gpu-hub/artifacts.lock.json`** — формула digest описана как «по порядку
+- ~~**`gpu-hub/artifacts.lock.json`** — формула digest описана как «по порядку
   строк хэшей» (`c91f9e7c…`), фактическая реализация `scripts/stage-artifacts.cjs`
   считает по rel-path (`417c0ad4…`, совпадает с lock); правка — со следующей
-  правкой lock.
+  правкой lock.~~ Исправлено в gpu-hub `18bc392`.
 
 ---
 

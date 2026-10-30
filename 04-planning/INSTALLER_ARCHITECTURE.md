@@ -1,8 +1,10 @@
 # Animastor Installer — Architecture
 
 > **Version:** 1.0.0 (canonical — code audit, not design draft)
-> **Status:** Current architecture as of HEAD (2026-08-30)
-> **Installer version:** 1.3.0 (`backend/src/installer/package.json`)
+> **Status:** Current architecture as of HEAD (2026-08-30); install UX
+> updated 2026-10-30 — see §7.1 (installer `0.2.0`, bootstrap `1.2.0`,
+> worker bundle `2.2.0`)
+> **Installer version:** 0.2.0 (`animastor-backend: packages/animastor-installer/package.json`)
 >
 > This document describes the **actually implemented** architecture of Animastor
 > Installer based on a full code audit, tests, and git history.
@@ -319,15 +321,35 @@ flowchart TD
 The hub serves a small, auditable bash script at `GET /gpu/installer`. The user
 runs it on the GPU machine.
 
-**Execution flow:**
+**Run (one command, URL in quotes):**
 
-1. Resolve `HUB_URL` / `PROFILE` / `MODE` (embedded at download time, overridable via env)
-2. Check prerequisites: `curl`/`wget`, `tar`, `sha256sum`, `Node.js >= 20`
-3. Download installer bundle from `{HUB_URL}/installer/bundle`
-4. Verify SHA-256 against `{HUB_URL}/installer/sha256`
-5. Unpack into temp directory (wiped on exit)
-6. Run real installer: `node cli.js install --profile <p> --mode <m>`
-7. Worker Key is asked interactively by the installer (hidden input)
+```
+curl -fsSL "https://animastor.org/gpu/installer?profile=<id>&mode=<m>&platform=linux" | bash
+curl -fsSL "<same URL>" | bash -s -- --mode managed      # override embedded values
+```
+
+The URL must be quoted: unquoted, the shell treats every `&` as "run in
+background" and `mode`/`platform` are lost (E2E 2026-10-30).
+
+**Execution flow (bootstrap 1.2.0):**
+
+1. The whole script is one `main()` called on the last line — with `curl | bash`
+   bash parses everything before running anything.
+2. Resolve `HUB_URL` / `PROFILE` / `MODE` (embedded at download time; env and
+   CLI flags override — user flags come last).
+3. Terminal check: stdin TTY, else `/dev/tty`; neither and no `--yes` → clear
+   error, **exit 3**, before any download.
+4. Check prerequisites: `curl`/`wget`, `tar`, `sha256sum`, `Node.js >= 20`
+   (`node`, `node20`, `node22`, else the pinned runtime is provisioned).
+5. Download installer bundle from `{HUB_URL}/installer/bundle`, verify SHA-256
+   against `{HUB_URL}/installer/sha256`, unpack into a temp dir (wiped on exit).
+6. Run the installer with stdin = `/dev/tty` (never the pipe):
+   `node cli.js install --profile <p> --hub-url <HUB_URL> [--mode <m>] <user args>`.
+   An empty mode is NOT passed — the installer decides (§10).
+7. Banner versions are exported (non-secret): `ANIMASTOR_BOOTSTRAP_VERSION`,
+   `ANIMASTOR_HUB_VERSION`, `ANIMASTOR_WORKER_BUNDLE_VERSION`.
+8. The installer ends with its RESULT block (§7.1); the bootstrap adds nothing
+   (no "scroll up" epilogue) and exits with the installer's code.
 
 **Security model:**
 - NO credential in the script, download URL, argv, env, or output
@@ -336,6 +358,95 @@ runs it on the GPU machine.
 - Everything unpacked into temp dir wiped on exit
 
 **Source:** `gpu-hub/bootstrap.js: buildBootstrapScript()`, `gpu-hub/gpu-hub.js: GET /installer`
+
+### 7.1 One-command install and installer UX (2026-10-30)
+
+Rules introduced after the E2E run of 2026-10-30 (V100; ComfyUI and Qwen3-TTS
+models already present; mode lost to the unquoted `&`, models offered for
+re-download, worker deployed but never started, "scroll up" with nothing above).
+
+**Web / Setup Contract.** The Linux install step is ONE command
+`curl -fsSL "<url>" | bash` (step id `run-bootstrap`; no `download-bootstrap`
+step). Setup Contract: `bootstrapOneLiner()` (installer `setup-contract.js`);
+web: `bootstrapOneLiner()` + `normalizeInstallSteps()` (merges the legacy
+two-step contract) in `@animastor/web-workers`.
+
+**Prompts.** Every question and the hidden Worker Key are read from the
+controlling terminal (`engine/tty.js`): one raw-mode line editor, no
+readline; each question is printed once (the plan text no longer repeats the
+questions/lists); CR/LF/CRLF end a line, type-ahead is kept for the next
+question; pasted keys are processed per character and never echoed. No
+terminal → `NoTerminalError`, exit 3.
+
+**Mode.** `--mode` wins; otherwise a found ComfyUI means `existing` (never a
+silent `managed`). ComfyUI root: `--root` → `~/ComfyUI` with `main.py` → root
+(cwd) of the user's running `main.py` process → `~/ComfyUI`. In existing mode
+the running process' `--port` / `--baseurl` are used.
+
+**Model detection** (`engine/probe.js`, `compatibility-resolver.js`):
+- folders from `<root>/extra_model_paths.yaml` are scanned and reported under
+  the canonical path (`models/<folder>/…`) with their real `location`;
+  downloads of missing pieces go there, never into a second copy
+  (ComfyUI-Qwen3-TTS loads from `folder_paths.get_folder_paths("TTS")[0]`);
+- repository metadata (`.gitattributes`, `README.md`, `configuration.json`,
+  `LICENSE`, at any depth; plus manifest `optional_files`) never makes a model
+  incomplete;
+- `incomplete` always names the missing files or the interrupted `.part`;
+  only the missing files are downloaded (present files are not re-hashed);
+- the plan shows only what is really missing, with the size of exactly those
+  files (ModelScope listing; "size unknown" when the listing fails).
+
+**Auto-fix — one question.** For an existing worker installation the
+installer lists what it will fix and asks once (`--yes` = fix, `--no-fix` =
+keep): worker bundle version (update from the bundled/hub bundle, `.env`
+kept), declared bundle dependencies (`npm ci` with the npm next to
+`NODE_BIN`; the canonical bundle declares none — there is nothing to
+install), `.env` wiring that differs: `WORKER_TYPE` (from the profile),
+`NODE_BIN` (Node >= 20, the installer's own binary), `COMFY_URL` +
+`NOTEBOOK_PATH` (probe), `COMFY_PORT`, `HUB_URL` (only when given via
+`--hub-url`, which the bootstrap always passes). Missing keys are always added.
+The Worker Key is never part of the list (`animastor doctor --new-key`).
+
+**ComfyUI URL probe.** `GET /system_stats` on `http://127.0.0.1:<port>`
+first; the reverse-proxy prefix (`.env NOTEBOOK_PATH`, `--baseurl`) only when
+the plain URL does not answer. Written as `COMFY_URL` (worker >= 2.2.0 uses
+it) and `NOTEBOOK_PATH` (empty when not needed — older workers build the URL
+from `COMFY_PORT` + `NOTEBOOK_PATH`).
+
+**Worker start and readiness.** The worker is started in every mode
+(`--no-start-worker` opts out) with `NODE_BIN`, log
+`<base>/logs/worker.log`, start marker `<base>/logs/worker.pid`; worker keys
+are stripped from the spawn environment (real env wins over `.env` inside the
+worker). A running worker is restarted when `.env` or the bundle changed. The
+step "start worker" is `done` only after the worker logged `ComfyUI ready`;
+an immediate exit with `Worker authentication failed` is reported as a
+rejected key.
+
+**End-to-end result.** ComfyUI API → worker `ComfyUI ready` → hub heartbeat
+(worker log `Hub heartbeat accepted — worker is ONLINE`, newer than the last
+`Beacon failed`). The RESULT block lists ✓ per check; every ✗ is one cause
+line plus one exact fix command (e.g. `animastor doctor`,
+`animastor doctor --new-key`, `animastor doctor --accept-runtime-change`);
+all ✓ → "Done — return to the Animastor page".
+
+**`animastor` command.** `animastor start | stop | status | logs [-f] |
+doctor [--new-key]`, linked into `~/.local/bin` (`/usr/local/bin` for root;
+a foreign file is never overwritten) and pointing at a persistent installer
+copy `~/animastor/installer` (the bootstrap's temp dir is wiped). `doctor` =
+the idempotent install for the recorded profile(s) — nothing present is
+downloaded again. `stop` never stops a ComfyUI the installer does not own.
+
+**Banner.** ASCII `ANIMASTOR` + installer / worker bundle / profile (manifest
+revision) / hub / bootstrap versions.
+
+**Profile hardware.** `audio/qwen-tts`: `gpu_min_vram_gb = 12` — an estimate
+(both 1.7B repos loaded by `tts-qwen-dialogue` ≈ 8.4 GiB weights + activations),
+recorded in `hardware.derivation`; lower only after a measured run.
+
+**`start-worker.sh`** (`animastor-worker`): `WORKER_TYPE` from `worker/.env`
+(argument only overrides; missing → error), Node >= 20 from `NODE_BIN`, waits
+for the ComfyUI API before choosing the URL (plain first, prefix fallback),
+`READY` only after `ComfyUI ready` in the log (timeout → cause + log path).
 
 ### Hub Artifact Serving (`gpu-hub/gpu-hub.js`)
 

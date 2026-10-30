@@ -223,7 +223,7 @@ These are rules whose violation would break the system. Source indicated.
 | `workflows.js` | Baseline workflow installation (repo path or hub endpoint) | `installWorkflows()`, `readCanonicalContent()` |
 | `state.js` | Install state persistence (JSON, atomic writes, secret scrubbing) | `emptyState()`, `loadState()`, `saveState()`, `setArtifact()` |
 | `io.js` | IO abstraction (real / memory-fs for tests / dry-run guard) | `createRealIo()`, `createMemoryFs()`, `createDryRunIo()` |
-| `prereq.js` | Host prerequisite checks (venv, build tools, ownership) | `checkPythonPrerequisites()`, `checkBuildPrerequisites()`, `checkOwnership()` |
+| `prereq.js` | Host prerequisite checks (venv, build tools, ownership) + apt install on consent | `checkPythonPrerequisites()`, `checkBuildPrerequisites()`, `checkOwnership()`, `canElevate()`, `installHostPackages()`, `resolveHostPrerequisite()` |
 | `progress.js` | Download progress reporting (TTY-aware) | `createProgressReporter()` |
 | `term.js` | Terminal renderer with busy spinner | `createTermRenderer()` |
 | `logger.js` | Logging with secret redaction | `createLogger()` |
@@ -430,11 +430,12 @@ line plus one exact fix command (e.g. `animastor doctor`,
 all ✓ → "Done — return to the Animastor page".
 
 **`animastor` command.** `animastor start | stop | status | logs [-f] |
-doctor [--new-key]`, linked into `~/.local/bin` (`/usr/local/bin` for root;
+doctor [--new-key]`, linked into `~/.local/bin` (root included — see §7.2;
 a foreign file is never overwritten) and pointing at a persistent installer
 copy `~/animastor/installer` (the bootstrap's temp dir is wiped). `doctor` =
 the idempotent install for the recorded profile(s) — nothing present is
-downloaded again. `stop` never stops a ComfyUI the installer does not own.
+downloaded again, the worker is started again. `stop` never stops a ComfyUI
+the installer does not own.
 
 **Banner.** ASCII `ANIMASTOR` + installer / worker bundle / profile (manifest
 revision) / hub / bootstrap versions.
@@ -447,6 +448,58 @@ recorded in `hardware.derivation`; lower only after a measured run.
 (argument only overrides; missing → error), Node >= 20 from `NODE_BIN`, waits
 for the ComfyUI API before choosing the URL (plain first, prefix fallback),
 `READY` only after `ComfyUI ready` in the log (timeout → cause + log path).
+
+### 7.2 Host prerequisites, re-install and node restart (installer 0.2.1)
+
+Rules introduced after the E2E run of 2026-10-30 (second pass: `python3.X-venv`
+was demanded from `apt` although mode was `existing` with ComfyUI and the
+Qwen3-TTS models present; a re-install over `~/animastor/worker` reported
+"0 key(s) preserved, 8 added" and asked for the Worker Key again; after a node
+reboot the `animastor` command was gone because only `/home` is kept).
+
+**System prerequisites are installed on the spot, when the host allows it.**
+`prereq.canElevate(io)` answers root (`apt-get` directly) or
+`sudo -n true` (`sudo -n apt-get`). One question `Install <pkg> now? [Y/n]`
+(Enter = yes) → `installHostPackages()` → `apt-get install -y <pkg>`. The apt
+index is refreshed at most ONCE (`apt-get update` when apt reports
+`Unable to locate package` / `no installation candidate`); a held dpkg lock is
+reported as "apt/dpkg is busy — wait and re-run", never as a bare exit code.
+After a successful install `resolveHostPrerequisite()` re-checks the
+prerequisite and the installation CONTINUES in the same run — no restart.
+`--yes` installs without a question. Without the privileges (or without a
+terminal and without `--yes`) nothing is installed and the historical message
+with the exact command is printed.
+
+**Prerequisites are checked only when the plan uses them.** The deep venv
+probe used to run unconditionally before the plan existed. Now the plan is
+built first and `install-plan.planNeedsPythonRuntime()` decides: a ComfyUI
+install/update/downgrade, a custom-node install, or a missing/incompatible
+`runtime:python` / `runtime:torch` entry (the engine will prepare a venv) need
+it — an `existing` ComfyUI with every model and node present does not, so no
+venv is demanded (or installed) for nothing. The engine's own early gate keeps
+the same rule and reuses a working venv without deep probing.
+
+**Re-install over an existing worker keeps `.env`.** `configureEnv()` merges:
+`preserved` now lists EVERY existing key this run did not change (the log line
+shows real numbers — `7 key(s) preserved, 0 added`), the Worker Key is never
+overwritten. The worker entry reports the REAL `.env` state also when the
+bundle is missing or incomplete (`env: { present, missing_required }`), so
+"bundle missing" no longer implies ".env missing": the `worker-key` step is
+created only when a secret is genuinely absent. The CLI additionally skips the
+prompt when `worker.hasEnvKey()` finds the token in `.env`; a REJECTED key is
+replaced only through `animastor doctor --new-key`.
+
+**Only `/home` survives a node restart.** The `animastor` command is linked
+into `~/.local/bin` **also under root** (no more `/usr/local/bin`) and
+`management.ensurePathEntry()` appends an idempotent PATH block to `~/.bashrc`
+and `~/.profile` when the directory is not there yet. All installer and worker
+state stays in `$HOME`: `~/ComfyUI` (root + `venv`), `~/animastor/worker`,
+`~/animastor/tools`, `~/animastor/installer`, logs under `~/animastor/logs`.
+After a reboot `animastor doctor` / `animastor start` work without
+re-installing; `doctor` starts the worker again (and the ComfyUI it owns in
+`managed` mode; `--no-start-worker` opts out) and, if a system package
+disappeared, offers to install it exactly as above before bringing the worker
+up.
 
 ### Hub Artifact Serving (`gpu-hub/gpu-hub.js`)
 

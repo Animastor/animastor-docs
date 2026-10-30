@@ -8,6 +8,55 @@ All notable changes to Animastor are documented here.
 
 ### Changed
 
+- **Установщик воркера 0.2.1 — системные пререквизиты, повторная установка и
+  рестарт ноды** (второй проход E2E 30.10: `python3.X-venv` требовался в
+  `existing` при найденном ComfyUI и моделях, повторная установка дала
+  `0 key(s) preserved, 8 added` и снова спросила ключ, после рестарта ноды
+  пропадала команда `animastor`). Коммиты: backend `c5cbd3c`
+  (`@animastor/installer` 0.2.1), gpu-hub — repin `artifacts.lock.json`
+  (`installer-src` на `c5cbd3c`).
+  - **Пререквизиты ставятся на месте.** Root или `sudo -n true` → один вопрос
+    `Install <pkg> now? [Y/n]` (Enter = да) → `apt-get install -y`;
+    `apt-get update` — максимум один раз и только если apt сообщил об устаревшем
+    индексе (`Unable to locate package` / `no installation candidate`); занятый
+    dpkg-lock — понятное сообщение «apt/dpkg занят, дождитесь и повторите», а
+    не голый код возврата. После установки проверка повторяется, и установка
+    **продолжается в том же прогоне** — без перезапуска. `--yes` ставит без
+    вопроса; без прав (или без терминала и без `--yes`) ничего не ставится,
+    печатается прежнее сообщение с точной командой. Код:
+    `prereq.canElevate()`, `installHostPackages()`,
+    `resolveHostPrerequisite()`, `linux.hostInstallCommand()`.
+  - **venv (и прочие пререквизиты) — только если план их использует.** План
+    теперь строится до гейта: `install-plan.planNeedsPythonRuntime()` отвечает
+    «да» только для установки/обновления ComfyUI, установки custom nodes и
+    отсутствующего/несовместимого `runtime:python`/`runtime:torch` (движок сам
+    готовит venv). В `existing` с рабочим ComfyUI, моделями и нодами Python не
+    трогается — venv не требуется и не ставится «впустую». Раньше глубокий
+    зонд venv запускался безусловно до построения плана.
+  - **Повторная установка поверх `~/animastor/worker` сохраняет `.env`.**
+    `configureEnv()` считает `preserved` по всем неизменённым ключам (в логе
+    реальные числа: `7 key(s) preserved, 0 added`), ключ никогда не
+    перезаписывается. Запись воркера в резолвере сообщает реальное состояние
+    `.env` и при отсутствующем/неполном бандле (`env: { present,
+    missing_required }`) — «бандл missing ⇒ .env missing» больше не
+    додумывается, шаг `worker-key` создаётся только при реально отсутствующем
+    секрете (пустой secret-шаг раньше мог останавливать прогон). CLI
+    дополнительно не спрашивает ключ, если он есть в `.env`
+    (`worker.hasEnvKey()`); отвергнутый хабом ключ меняется только через
+    `animastor doctor --new-key`.
+  - **Живучесть после рестарта E2E-ноды (сохраняется только `/home`).**
+    `animastor` ставится в `~/.local/bin` **и под root** (вместо
+    `/usr/local/bin`), PATH идемпотентно дописывается в `~/.bashrc` и
+    `~/.profile` (`management.ensurePathEntry()` — один блок, без дублей).
+    Всё состояние в `$HOME`: `~/ComfyUI` (+venv), `~/animastor/{worker,tools,
+    installer}`, логи `~/animastor/logs`. После рестарта `animastor doctor` /
+    `animastor start` работают без переустановки; `doctor` поднимает воркер
+    (и свой ComfyUI в `managed`; `--no-start-worker` отключает) и, если
+    системный пакет пропал, предлагает его поставить по п.1.
+  - Тесты: `tests/installer-e2e-fixes.test.js` (P1-P8 пререквизиты и apt,
+    V1-V4 gating venv, E1-E5 `.env`/ключ, L1-L4 `~/.local/bin` + PATH,
+    D1 doctor). `npx mocha` в `packages/animastor-installer` — **365 passing,
+    0 failing**. Документ: `04-planning/INSTALLER_ARCHITECTURE.md` §7.2.
 - **GPU-установщик воркера — одна команда и честный итог** (по прогону E2E
   30.10: V100, ComfyUI и модели Qwen3-TTS уже стояли). Коммиты в `main`:
   backend `057cea2` + `6048569` (`@animastor/installer` 0.2.0), worker

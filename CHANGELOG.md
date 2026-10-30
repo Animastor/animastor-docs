@@ -8,6 +8,53 @@ All notable changes to Animastor are documented here.
 
 ### Changed
 
+- **Установщик воркера 0.2.2 — владелец ComfyUI по факту, принудительный
+  fix-список и boot-режим** (третий проход E2E 30.10 на TIR-ноде V100, «тип A»:
+  платформа сама запускает `main.py --listen 0.0.0.0 --port 8888
+  --baseurl /notebook/…`, без префикса `/system_stats` даёт 404; установщик
+  0.2.1 предложил верный `COMFY_URL`, но `.env 0 updated` и поднял второй
+  ComfyUI на 8188 из-за записанного `managed / startComfyui=true`). Коммиты:
+  backend `@animastor/installer` 0.2.2, gpu-hub — repin `artifacts.lock.json`
+  (`installer-src` на коммит 0.2.2).
+  - **Владелец ComfyUI — по факту, не по записи** (`engine/comfy-owner.js`).
+    Процессы `main.py` читаются из `/proc` (`probe.listRunningComfyUI`):
+    адрес берётся из `--listen/--port/--baseurl` самого процесса и
+    подтверждается `GET <url>/system_stats` с ComfyUI-ответом (есть `system`;
+    пустой 200/HTML/чужой JSON — не доказательство). Чужой (платформенный)
+    процесс → `mode=existing`, его адрес идёт в `COMFY_URL`, свой ComfyUI НЕ
+    поднимается; `managed` — только когда ComfyUI поставил установщик и никто
+    другой его не запускает; ничего не запущено и корень не наш — `existing`
+    (чужой ComfyUI не перехватывается). Противоречие install-state с фактом
+    (`mode`, `startComfyui`, `comfyPort`, наличие своего второго процесса)
+    печатается и исправляет запись; запущенный «свой» экземпляр при наличии
+    чужого предлагается остановить (сигнал — только процессу, который
+    классифицирован как наш). Решение о запуске — одна точка
+    `decideStartComfy()`: чужой инстанс важнее флага и памяти.
+  - **Fix-список применяется реально.** `COMFY_URL`, `NOTEBOOK_PATH`,
+    `COMFY_PORT` переписываются в `.env` (в списке — только реальные разницы,
+    по одному пункту на ключ), повторный прогон по исправленному `.env`
+    fix-списка не показывает. Адрес пересчитывается при каждом `install` /
+    `doctor` / `start` (порт и префикс меняются между загрузками).
+  - **`doctor`: реальный режим, версия хаба, тот же fix-список.** Версия хаба:
+    bootstrap-env → `state.hub_version` → `<hub>/health` →
+    `ANIMASTOR_HUB_VERSION` из отдаваемого установщика — вместо «hub unknown».
+    Ответ «n» на optional workflows (и отказ от моделей/нод) запоминается и
+    при повторном прогоне не спрашивается, в том числе под `--yes`.
+  - **PATH и автозапуск после рестарта.** Дотфайлы сбрасываются при загрузке
+    → `install`/`doctor`/`animastor start` восстанавливают PATH-блок при
+    каждом запуске и печатают полный путь команды (`~/.local/bin/animastor`).
+    `~/animastor/start-worker.sh` заменяется обёрткой
+    `exec ~/.local/bin/animastor start "$@"` (старый — в
+    `start-worker.sh.bak`), `animastor doctor --yes` без TTY — boot-режим:
+    ждёт платформенный ComfyUI до `--comfy-wait-ms` (180 с по умолчанию), в
+    `managed` поднимает свой, ставит пропавшие apt-пакеты, печатает ОДНУ
+    строку и выходит с 0/≠0. Готовые startup-скрипты типа A и B —
+    `04-planning/INSTALLER_BOOT_STARTUP.md`.
+  - Тесты: `tests/installer-owner-v022.test.js` (O1-O6 владелец и конфликты,
+    F1-F2 fix-список, D1 запомненные ответы, H1 версия хаба, P1 PATH, S1
+    обёртка автозапуска, B1-B3 boot-режим). `npx mocha` в
+    `packages/animastor-installer` — **381 passing, 0 failing**. Документ:
+    `04-planning/INSTALLER_ARCHITECTURE.md` §7.3.
 - **Установщик воркера 0.2.1 — системные пререквизиты, повторная установка и
   рестарт ноды** (второй проход E2E 30.10: `python3.X-venv` требовался в
   `existing` при найденном ComfyUI и моделях, повторная установка дала

@@ -444,7 +444,9 @@ revision) / hub / bootstrap versions.
 (both 1.7B repos loaded by `tts-qwen-dialogue` ≈ 8.4 GiB weights + activations),
 recorded in `hardware.derivation`; lower only after a measured run.
 
-**`start-worker.sh`** (`animastor-worker`): `WORKER_TYPE` from `worker/.env`
+**`start-worker.sh`** (installer 0.2.2 replaces it with a wrapper around
+`animastor start`; see §7.3). The `animastor-worker` script itself:
+`WORKER_TYPE` from `worker/.env`
 (argument only overrides; missing → error), Node >= 20 from `NODE_BIN`, waits
 for the ComfyUI API before choosing the URL (plain first, prefix fallback),
 `READY` only after `ComfyUI ready` in the log (timeout → cause + log path).
@@ -500,6 +502,65 @@ re-installing; `doctor` starts the worker again (and the ComfyUI it owns in
 `managed` mode; `--no-start-worker` opts out) and, if a system package
 disappeared, offers to install it exactly as above before bringing the worker
 up.
+
+### 7.3 ComfyUI ownership by fact, boot path (installer 0.2.2)
+
+Rules introduced after the E2E run of 2026-10-30 on a TIR node (V100, "type A":
+the platform itself runs `python3 /home/jovyan/ComfyUI/main.py --listen 0.0.0.0
+--port 8888 --baseurl /notebook/p-13097/n-…` as root; the port and the prefix
+change between boots, `GET /system_stats` answers 404 without the prefix). The
+installer of 0.2.1 offered the right `COMFY_URL` fix but reported `.env 0
+updated`, and then started a SECOND ComfyUI on 8188 from the same root because
+the recorded state said `managed / startComfyui=true`.
+
+**Ownership is decided from processes, not from the state**
+(`engine/comfy-owner.js`). Every `main.py` process of the account is inspected
+via `/proc` (`probe.listRunningComfyUI`): its cwd is the ComfyUI root, and
+`--listen` / `--port` / `--baseurl` give the address. The address is verified
+with `GET <url>/system_stats`, which must return a ComfyUI payload (a `system`
+object) — a bare 200, a 404 from the wrong prefix or another service's JSON is
+not proof.
+
+| Fact | Result |
+|---|---|
+| Verified process not started by the installer (`--listen` ≠ `127.0.0.1`, `--baseurl`, pid/port not in `state.comfyui_runtime`) | `mode = existing`, `COMFY_URL` = its cmdline address; the installer never starts a second ComfyUI |
+| The installer's own process (`--listen 127.0.0.1`, no `--baseurl`, port/pid recorded) | `mode = managed` |
+| Nothing runs, `components.comfyui.owned = true` | `managed` (start it) |
+| Nothing runs, the installer did not create the root | `existing` (the user's ComfyUI is down — never silently taken over) |
+
+A recorded state that contradicts the machine is printed as a conflict
+(`mode`, `startComfyui`, `comfyPort`, own-vs-platform instance), corrected for
+the run and stored back; when the installer's own instance also runs, stopping
+it is ONE question (only a process classified as ours is ever signaled).
+`engine/comfy-owner.decideStartComfy()` is the single decision point: a foreign
+instance always wins, an explicit `--start-comfy` is ignored and reported.
+
+**The fix list is applied.** `COMFY_URL`, `NOTEBOOK_PATH` and `COMFY_PORT` are
+written to `.env` with the probed address (only real differences are listed,
+one entry per key, deduplicated); a second run over a fixed `.env` has no fix
+list and nothing to add. The address is recomputed on every `install` /
+`doctor` / `start` — never read back from `.env` — because the platform's port
+and prefix change between boots.
+
+**`doctor` is the boot command.** It prints the real mode (with the reason),
+the hub version (bootstrap env → `state.hub_version` → `GET <hub>/health` →
+the served installer script's `ANIMASTOR_HUB_VERSION`), the same fix list as
+`install`, and remembers answers already given (a declined optional workflow
+stays declined, also under `--yes`). `animastor doctor --yes` without a TTY is
+the boot path: no banner, no plan, no questions — wait up to `--comfy-wait-ms`
+(default 180 s, `ANIMASTOR_COMFY_WAIT_MS`) for the platform's ComfyUI, install
+missing apt packages (`dpkg-query` check → `apt-get install -y`), start the
+worker (and its own ComfyUI in `managed`), then ONE line plus exit 0/≠0.
+
+**PATH and autostart survive the reboot.** E2E nodes reset `~/.bashrc` and
+`~/.profile` on every boot while `/home` survives: `install`, `doctor` and
+`animastor start` re-apply the idempotent PATH block on EVERY run and print the
+full path of the command (`~/.local/bin/animastor`). `~/animastor/
+start-worker.sh` is replaced by a wrapper (`exec ~/.local/bin/animastor start
+"$@"`, the old script is copied once to `start-worker.sh.bak`), so the old
+launcher — which apt-installed Node 18 on every boot, waited for 8188 and knew
+nothing about the platform's ComfyUI — is no longer used. Ready startup scripts
+for both node types: `04-planning/INSTALLER_BOOT_STARTUP.md`.
 
 ### Hub Artifact Serving (`gpu-hub/gpu-hub.js`)
 

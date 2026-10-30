@@ -4,6 +4,42 @@ All notable changes to Animastor are documented here.
 
 ---
 
+## 2026-10-30
+
+### Verified
+
+- **GPU-цепочка (воркер → hub → backend) — совместимость и сухой прогон.**
+  Продовый бандл воркера (`2.1.1`, digest `417c0ad4…`) байт-идентичен
+  `main` `animastor-worker`; контракт `POST /task/result` согласован по
+  обязательным полям (`job_id`, `build_id`, `dispatch_id`,
+  `protocol_version = 2`, `result_base64`; fence/intent/receipt/epoch — только
+  backend, idem-key/fence считаются из dispatch-receipt и
+  `sha256([workspaceId, jobId, jobType, buildId, inputSha256(params), epoch])`).
+  Сухой прогон на изолированном стенде (продовые образы хаба `3611c644…` и
+  backend'а `f85470bb…`, пустая тестовая книга): image 2/2, audio 1/1,
+  video 1/1, 0 отклонений, 0 дублей; сценарии «дубликат доставки», «убийство
+  воркера», «перезапуск backend», «отмена» — PASS, публикация ровно одна.
+  **Изменений в воркере не требуется**, `GPU_FENCING_MODE=off` не нужен
+  (fence-цепочка целиком backend↔Redis). Правку хаба `a1e1589`
+  (`PUBLIC_HUB_URL` → `.org` + прокидывание env в `server.js`) выкатить со
+  следующим релизом `gpu-hub-ghcr-release`.
+  Документ: `04-planning/GPU_RESTART_PREREQUISITES.md` (разделы 4–5); отчёт:
+  `reports/2026-10-29/gpu-chain-dry-run.md`.
+
+### Known issues
+
+- **GPU: replay сохранённого результата после рестарта backend** — результат,
+  сохранённый хабом при недоступном backend'е, на старте отклоняется
+  `no_active_dispatch` (dispatch-identity теряется); восстановление идёт
+  повторным диспатчем через worklist (одна лишняя генерация). Для `observe`
+  не блокер, кандидат на улучшение отдельной задачей.
+- **`gpu-hub/artifacts.lock.json`** — формула digest описана как «по порядку
+  строк хэшей» (`c91f9e7c…`), фактическая реализация `scripts/stage-artifacts.cjs`
+  считает по rel-path (`417c0ad4…`, совпадает с lock); правка — со следующей
+  правкой lock.
+
+---
+
 ## 2026-10-29
 
 ### Changed

@@ -56,6 +56,13 @@ All notable changes to Animastor are documented here.
     ждёт ComfyUI до выбора префикса, `READY` только после `ComfyUI ready`
     (таймаут → причина + путь к логу).
   - Документ: `04-planning/INSTALLER_ARCHITECTURE.md` §7, §7.1.
+- **Очистка worker после split репо.** Удалён `packages/animastor-worker/new/`
+  (устаревшие ops-скрипты: `start-worker.sh` с `${1:-image}` и
+  `apt-get remove nodejs`, `bootstrap-*.sh`, `fix-nodes-*.sh`, `mc.sh`,
+  `start-video.sh`, `new/MEMORY.md`, `new/SYSTEM.md`). Ни бандл
+  `packages/animastor-worker/worker/`, ни `gpu-hub/scripts/stage-artifacts.cjs`
+  (ставит `packages/animastor-worker/worker`) на него не ссылались.
+  Коммит: `26b0f97` (merge `029489d` в `main`, репо `animastor-worker`).
 
 ### Fixed
 
@@ -67,6 +74,19 @@ All notable changes to Animastor are documented here.
   bootstrap (удаляется на выходе).
 - **`artifacts.lock.json`:** текст формулы digest приведён к реализации
   (строки упорядочены по relpath) — закрыт known issue ниже.
+- **Инсталлятор-тесты: путь к бандлу через `resolveRepoBundleDir` post-split.**
+  Backend больше не содержит `packages/animastor-worker` (воркер — отдельный репо).
+  - `installer-setup-contract.test.js`: версия бандла читается через
+    `resolveRepoBundleDir` (канон `packages/animastor-worker/worker`);
+    пропускается, если бандла нет локально.
+  - `installer-platform.test.js`: `require('@animastor/gpu-hub/…)` берётся из
+    `backend/node_modules`; `WORKER_BUNDLE_DIR` — синтетическая фикстура.
+  Коммит: `e203b3c` (merge `a7a4114` в `main`, репо `animastor-backend`).
+  Проверено: `npx mocha` в `packages/animastor-installer` — 341 passing, 1 pending,
+  0 fail. В `backend` нет failing тестов, ищущих `packages/animastor-worker` /
+  `WORKER_BUNDLE_DIR` (остальные failing — пред-existing, не связаны со split
+  воркера: версия инсталлятора IB-G9, Stage 118/122 GPU, stage 50,
+  synthetic-null-recreation).
 
 ### Not done (owner decisions)
 

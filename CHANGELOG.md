@@ -22,9 +22,12 @@ All notable changes to Animastor are documented here.
     подтверждается `GET <url>/system_stats` с ComfyUI-ответом (есть `system`;
     пустой 200/HTML/чужой JSON — не доказательство). Чужой (платформенный)
     процесс → `mode=existing`, его адрес идёт в `COMFY_URL`, свой ComfyUI НЕ
-    поднимается; `managed` — только когда ComfyUI поставил установщик и никто
-    другой его не запускает; ничего не запущено и корень не наш — `existing`
-    (чужой ComfyUI не перехватывается). Противоречие install-state с фактом
+    поднимается;    `managed` — только когда ComfyUI поставил установщик и никто
+    другой его не запускает. Если нет ни одного процесса, решает диск:
+    ComfyUI, который создал установщик, поднимается (`managed`); лежащий в
+    корне, но не запущенный ComfyUI остаётся `existing` (чужой инстанс не
+    перехватывается); чистый корень — `managed` (первая установка).
+    Противоречие install-state с фактом
     (`mode`, `startComfyui`, `comfyPort`, наличие своего второго процесса)
     печатается и исправляет запись; запущенный «свой» экземпляр при наличии
     чужого предлагается остановить (сигнал — только процессу, который
@@ -53,7 +56,7 @@ All notable changes to Animastor are documented here.
   - Тесты: `tests/installer-owner-v022.test.js` (O1-O6 владелец и конфликты,
     F1-F2 fix-список, D1 запомненные ответы, H1 версия хаба, P1 PATH, S1
     обёртка автозапуска, B1-B3 boot-режим). `npx mocha` в
-    `packages/animastor-installer` — **381 passing, 0 failing**. Документ:
+    `packages/animastor-installer` — **382 passing, 0 failing**. Документ:
     `04-planning/INSTALLER_ARCHITECTURE.md` §7.3.
 - **Установщик воркера 0.2.1 — системные пререквизиты, повторная установка и
   рестарт ноды** (второй проход E2E 30.10: `python3.X-venv` требовался в

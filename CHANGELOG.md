@@ -63,6 +63,14 @@ All notable changes to Animastor are documented here.
   `packages/animastor-worker/worker/`, ни `gpu-hub/scripts/stage-artifacts.cjs`
   (ставит `packages/animastor-worker/worker`) на него не ссылались.
   Коммит: `26b0f97` (merge `029489d` в `main`, репо `animastor-worker`).
+- **gpu-hub GHCR release workflow — валидация `image_tag`, checkout@v5.** Коммит
+  `b7c2568` (merge `5e1bc02` в `main`, репо `animastor-gpu-hub`):
+  - Первый шаг `gpu-hub-ghcr-release` валидирует `inputs.image_tag` по
+    регулярке `^v[0-9]+\.[0-9]+\.[0-9]+$` и падает с сообщением
+    `image_tag must look like v0.2.1, got '<...>'`;
+  - Тег используется только в кавычках (buildx `name=`, `docker tag`, `docker
+    push`, шаг сумMARY);
+  - `actions/checkout` с `@v4` на `@v5` (все три checkout-шага).
 
 ### Fixed
 

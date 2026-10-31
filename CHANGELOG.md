@@ -8,6 +8,23 @@ All notable changes to Animastor are documented here.
 
 ### Changed
 
+- **Фронты под Stage 155 «генерация только по команде»** (web + Android в одной
+  задаче, правило паритета 0). Панель генератора:
+  - blocked → «Нет воркера: аудио/изображения/видео» + «Повторить»;
+  - interrupted → «Прервано» + «Продолжить» (повтор — новая явная команда
+    `/regenerate` с тем же типом и scope);
+  - cancelled → «Отменено» (раньше показывалось как «Готово»);
+  - остановленные строки без спиннера и таймера, не считаются «в работе».
+
+  `/regenerate` 409 `layer_disabled` → «Включите слой «…», чтобы генерировать».
+  Автозапусков генерации во фронтах не найдено; мёртвый Android
+  `regenerateFromSnapshot` удалён.
+  - web: `@animastor/web-generator` 0.2.0 (`e02646b`, публикация — владелец), app
+    `70a404b`; пакет 82 теста, app 211 (база 206), typecheck 0, vite build OK.
+  - Android: `7ef0754`, 0.2.2 (versionCode 4); `testDebugUnitTest` 197/0 (база 186),
+    `apk-build.sh release` OK. APK на сайт — после ОК владельца.
+  - `ANDROID_WEB_PARITY.md`: GAP Stage 155 → FIXED.
+
 - **Генерация только по явной команде** (правило владельца; разбор инцидента
   BA `reports/2026-10-31/auto-image-task-ba-incident.md`). Описание и полная
   таблица бывших автозапусков: `architecture/COMMAND_ONLY_GENERATION.md`.

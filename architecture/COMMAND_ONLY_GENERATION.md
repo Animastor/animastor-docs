@@ -137,8 +137,15 @@ progress-panel показывает строки `blocked` и `interrupted` (п�
 - PG: `scene_assets.status` += `cancelled`; `generation_tasks.status` +=
   `blocked`, `interrupted` (миграция CHECK при старте backend).
 - ProgressEventsPort (O-5): новая операция `blockSceneStage`.
-- Паритет фронтов: отрисовка blocked/interrupted и обработка 409
-  `layer_disabled` — GAP в `ANDROID_WEB_PARITY.md`.
+- Фронты (2026-10-31): web (`@animastor/web-generator` 0.2.0 + app) и Android
+  0.2.2 показывают blocked «Нет воркера: <тип>» + «Повторить», interrupted
+  «Прервано» + «Продолжить», cancelled «Отменено». Повтор — новая явная
+  команда `/regenerate` (тот же тип и scope), никогда не автоматически.
+  409 `layer_disabled` → «Включите слой «…», чтобы генерировать». Ни один
+  фронт не запускает генерацию сам: проверены таймеры, открытие книги и
+  завершение стадий. Мёртвый Android `regenerateFromSnapshot` удалён.
+  Статус ассета сцены (`scene_assets`) фронты не выводят; при отсутствии
+  файла показывается нейтральное «Не сгенерировано».
 
 ## Выкатка
 

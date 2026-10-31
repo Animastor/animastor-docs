@@ -3,7 +3,7 @@
 > **Version:** 1.0.0 (canonical — code audit, not design draft)
 > **Status:** Current architecture as of HEAD (2026-08-30); install UX
 > updated 2026-10-30 — see §7.1 (installer `0.2.0`, bootstrap `1.2.0`,
-> worker bundle `2.2.0`)
+> worker bundle `2.2.0`); boot gate — §7.4 (installer `0.2.3`, 2026-10-31)
 > **Installer version:** 0.2.0 (`animastor-backend: packages/animastor-installer/package.json`)
 >
 > This document describes the **actually implemented** architecture of Animastor
@@ -562,6 +562,70 @@ launcher — which apt-installed Node 18 on every boot, waited for 8188 and knew
 nothing about the platform's ComfyUI — is no longer used. Ready startup scripts
 for both node types: `04-planning/INSTALLER_BOOT_STARTUP.md`.
 
+### 7.4 Boot gate: wait for the platform's ComfyUI (installer 0.2.3)
+
+Live boot of 2026-10-31 on the TIR node (type A): the startup script
+`exec ~/.local/bin/animastor doctor --yes --comfy-wait-ms 180000 >>
+~/animastor/logs/bootstrap.log 2>&1` ran before the platform had started its
+`main.py`. 0.2.2 started the worker at once with the address left in `.env`
+from the previous boot, failed `start worker` after 90 s and printed the fix
+"start your ComfyUI on port 8888" without the notebook prefix (the worker
+reached ComfyUI on its own later because the old address happened to be still
+valid).
+
+**"ComfyUI belongs to the platform" by record**
+(`comfy-owner.platformOwnedByRecord(state)`): `state.comfy_owner.owner ===
+'foreign'` (recorded by every run that saw a foreign instance: `{ owner, pid,
+url, seen_at }`), or the installer did not create the ComfyUI
+(`components.comfyui.owned !== true`) and the state says `mode = existing` or
+`installer_options.startComfyui = false`. A managed type B install (owned,
+`startComfyui=true`) is never platform-owned.
+
+**The gate** (`cli.platformComfyGate()` → `comfy-owner.waitForPlatformComfyUI()`)
+runs before the plan, the fix list and the engine when `--comfy-wait-ms` (boot
+default 180 s, `ANIMASTOR_COMFY_WAIT_MS`) is > 0, no verified foreign instance
+answers, and either nothing runs or the record says the ComfyUI belongs to the
+platform:
+
+| Step | Behaviour |
+|---|---|
+| poll (every 3 s) | `resolveComfyOwner()` again: `pgrep` + `/proc/<pid>/cmdline` → address from `--port`/`--baseurl` of THIS process, `GET <url>/system_stats` must return a ComfyUI payload |
+| progress | one log line per 30 s: `waiting for the platform's ComfyUI — no ComfyUI main.py process yet (30 s of 180 s)` or `… process pid N at <full url> does not answer GET /system_stats yet …` |
+| answered | `the platform's ComfyUI answers at <url> (pid N, after S s)` → normal doctor: `COMFY_URL` / `COMFY_PORT` / `NOTEBOOK_PATH` recomputed into `.env`, worker started, "ComfyUI ready" awaited |
+| timeout, platform-owned or `existing` | `FAILED`: `ComfyUI is started by the platform; it did not come up in N s` (+ the pid and full address of a process that appeared but did not answer), fix: run `animastor doctor` after the platform's ComfyUI is up. The engine does NOT run: no worker start, no `.env` rewrite with the previous boot's address |
+| timeout, managed | continue as before — the installer starts its own ComfyUI |
+
+**Worker readiness window.** `worker.waitForWorkerReady({ comfyUp,
+comfyUpTimeoutMs })`: the 90 s "worker → ComfyUI ready" window opens only once
+`GET <COMFY_URL>/system_stats` answered (up to `--comfy-wait-ms` is spent on
+that first); a ComfyUI that is still loading no longer eats the worker's time.
+
+**Addresses in the result are full.** The `ComfyUI API` end-to-end check
+names every URL that was really tried (with the notebook prefix); with a
+platform ComfyUI the fix is "ComfyUI is started by the platform — when <url>
+answers, run: animastor doctor", for a prefixed own ComfyUI "start your
+ComfyUI so that <url> answers …"; the plain "start your ComfyUI on port N" is
+left only for an unprefixed address.
+
+**Port logic only for our own ComfyUI.** With a foreign instance the port is
+its `--port`: the remembered `comfyPort` is not reused (no "reusing remembered
+setting: comfyPort=<old>") and the "remembered port … is now used by another
+service — picking a new one" search is skipped. Managed (type B) keeps the
+§11 port selection unchanged.
+
+**`animastor status`** (`management.collectStatus/renderStatus`): for a
+non-managed install the running `main.py` the installer did not start is
+reported as `ComfyUI: ✓ RUNNING — started by the platform (pid N), <url from
+its cmdline>`; before the platform started it (record says platform) —
+`✗ UNREACHABLE — started by the platform (no process running)`. "your own"
+stays only for a user's ComfyUI without a platform record.
+
+Tests: `tests/installer-boot-v023.test.js` (W0 record, W1 process after 60 s →
+OK + `.env` rewritten, W2 no process → FAILED without worker, W3 process
+without answer → full address, W4 port/prefix change between boots, W4b type
+B, W5 readiness window, W6 status label, W7 port cosmetics + managed
+unchanged).
+
 ### Hub Artifact Serving (`gpu-hub/gpu-hub.js`)
 
 | Endpoint | Purpose | Auth |
@@ -792,6 +856,8 @@ source of `required`.
 **Source:** `engine/engine.js: autoPickComfyPort()`
 - Checks if the remembered port is used by a foreign service
 - If yes → picks a new one
+- Only for the installer's own ComfyUI: with a platform (foreign) instance the
+  port is its `--port` and this logic is skipped (installer 0.2.3, §7.4)
 - Persisted in `install-state.json: installer_options.comfyPort`
 - Default: 8188 (but auto-picked to avoid conflicts)
 

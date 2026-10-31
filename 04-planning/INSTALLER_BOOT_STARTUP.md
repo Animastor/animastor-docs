@@ -1,4 +1,4 @@
-# Startup-скрипты ноды (установщик 0.2.2)
+# Startup-скрипты ноды (установщик 0.2.3)
 
 Готовые команды автозапуска после загрузки/рестарта ноды для двух типов машин,
 которые встретились на E2E 30.10.
@@ -10,7 +10,7 @@
   сбрасывается;
 - `~/.local/bin/animastor` и `~/animastor/**` живут в `/home` и переживают
   рестарт;
-- установщик 0.2.2 сам восстанавливает PATH-блок при каждом `install` /
+- установщик (с 0.2.2) сам восстанавливает PATH-блок при каждом `install` /
   `doctor` / `start`, пересчитывает адрес ComfyUI из cmdline процесса и
   доставляет пропавшие apt-пакеты (root или `sudo -n`).
 
@@ -31,10 +31,34 @@ export PATH="$HOME/.local/bin:$PATH"
 exec "$HOME/.local/bin/animastor" doctor --yes --comfy-wait-ms 180000
 ```
 
-`--comfy-wait-ms` — сколько секунд ждать платформенный ComfyUI (по умолчанию
-180000 мс; альтернатива — `ANIMASTOR_COMFY_WAIT_MS`). Если процесс так и не
-появился, `doctor` завершится с ненулевым кодом и одной строкой причины —
-воркер без ComfyUI не стартует.
+`--comfy-wait-ms` — сколько миллисекунд ждать платформенный ComfyUI (по
+умолчанию 180000 мс; альтернатива — `ANIMASTOR_COMFY_WAIT_MS`).
+
+Как ждёт 0.2.3 (запуск раньше платформы — нормальный случай). Если
+install-state говорит «ComfyUI принадлежит платформе» (`mode existing`,
+`startComfyui=false` или записанный `comfy_owner.owner = foreign`), а
+проверенного платформенного процесса ещё нет, `doctor`:
+
+1. ждёт появления процесса `main.py` И ответа `GET /system_stats`, на каждом
+   шаге заново беря порт и префикс из cmdline процесса;
+2. раз в 30 с пишет в лог прогресс:
+   `waiting for the platform's ComfyUI — no ComfyUI main.py process yet (30 s of 180 s)`
+   или `… process pid N at http://127.0.0.1:8888/notebook/p-…/n-… does not answer GET /system_stats yet …`;
+3. после ответа — `the platform's ComfyUI answers at <url> (pid N, after S s)`,
+   пересчитывает `COMFY_URL` / `COMFY_PORT` / `NOTEBOOK_PATH` в `.env`,
+   запускает воркер и ждёт «ComfyUI ready» (90 с отсчитываются с момента,
+   когда ComfyUI ответил).
+
+Если за `--comfy-wait-ms` ComfyUI так и не поднялся — воркер НЕ запускается
+(в том числе со старым адресом из `.env`), итог `FAILED` с кодом 1:
+
+```
+animastor doctor: FAILED — 1 problem(s) — mode existing, ComfyUI not reachable, worker not started (/home/jovyan/.local/bin/animastor)
+  ✗ ComfyUI API: ComfyUI is started by the platform; it did not come up in 180 s (no ComfyUI main.py process appeared) — fix: run `/home/jovyan/.local/bin/animastor doctor` after the platform's ComfyUI is up
+```
+
+Если процесс появился, но не отвечал, в причине — его pid и полный адрес с
+префиксом.
 
 ## Тип B — чистый Ubuntu, ComfyUI ставит установщик (managed)
 
@@ -89,7 +113,7 @@ animastor doctor: FAILED — 2 problem(s) — mode existing, ComfyUI not reachab
 | Поднять всё и проверить | `~/.local/bin/animastor start` |
 | Перепроверить и починить | `~/.local/bin/animastor doctor` |
 | Новый Worker Key (старый отвергнут) | `~/.local/bin/animastor doctor --new-key` |
-| Статус | `~/.local/bin/animastor status` |
+| Статус (платформенный ComfyUI — `started by the platform (pid …)`) | `~/.local/bin/animastor status` |
 | Логи воркера | `~/.local/bin/animastor logs -f` |
 | Boot-режим вручную | `~/.local/bin/animastor doctor --yes --comfy-wait-ms 180000` |
 

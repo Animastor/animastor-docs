@@ -4,6 +4,43 @@ All notable changes to Animastor are documented here.
 
 ---
 
+## 2026-10-31
+
+### Changed
+
+- **Установщик воркера 0.2.3 — boot-режим типа A ждёт платформенный ComfyUI**
+  (живой прогон 31.10 на TIR: стартовый скрипт `animastor doctor --yes
+  --comfy-wait-ms 180000` запустился раньше платформенного `main.py`; 0.2.2
+  сразу запустил воркер со старым адресом из `.env`, через 90 с `start worker
+  — FAILED`, итог с fix «start your ComfyUI on port 8888» без префикса).
+  Коммиты: backend `@animastor/installer` 0.2.3, gpu-hub — repin
+  `artifacts.lock.json` (`installer-src` на коммит 0.2.3). Без выкатки.
+  - **Ожидание по записи «ComfyUI принадлежит платформе»**
+    (`comfy-owner.platformOwnedByRecord`: `comfy_owner.owner = foreign`,
+    записываемый теперь каждым прогоном, либо `mode existing` /
+    `startComfyui=false` при не созданном установщиком ComfyUI). Пока
+    проверенного платформенного процесса нет — ждать до `--comfy-wait-ms`
+    появления `main.py` И ответа `/system_stats`, на каждом шаге заново
+    определяя адрес из cmdline; прогресс в лог раз в 30 с. Только после этого
+    — пересчёт `COMFY_URL` / `COMFY_PORT` / `NOTEBOOK_PATH`, запуск воркера,
+    ожидание «ComfyUI ready».
+  - **Не поднялся — FAILED без воркера**: «ComfyUI is started by the platform;
+    it did not come up in N s», fix — `animastor doctor` после того, как
+    ComfyUI поднимется. Engine не запускается (нет воркера со старым адресом,
+    нет переписывания `.env`). Адреса в итоге — всегда полные, с префиксом.
+  - **90 с «worker → ComfyUI ready» отсчитываются после ответа ComfyUI**
+    (`worker.waitForWorkerReady({ comfyUp })`).
+  - **`animastor status`**: ComfyUI, запущенный не установщиком, —
+    «started by the platform (pid …)» с адресом из его cmdline, а не «your own».
+  - **Косметика порта**: при чужом ComfyUI нет «reusing remembered setting:
+    comfyPort=<старый>» и не выполняется логика своего порта («remembered
+    port … is now used by another service — picking a new one»); выбор порта
+    в managed (тип B) не изменился.
+  - Тесты: `tests/installer-boot-v023.test.js` (W0-W7). `npm test` в
+    `packages/animastor-installer` — **394 passing, 0 failing**. Документы:
+    `04-planning/INSTALLER_ARCHITECTURE.md` §7.4,
+    `04-planning/INSTALLER_BOOT_STARTUP.md`.
+
 ## 2026-10-30
 
 ### Changed

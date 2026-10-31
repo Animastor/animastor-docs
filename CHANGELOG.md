@@ -19,8 +19,8 @@ All notable changes to Animastor are documented here.
   `/regenerate` 409 `layer_disabled` → «Включите слой «…», чтобы генерировать».
   Автозапусков генерации во фронтах не найдено; мёртвый Android
   `regenerateFromSnapshot` удалён.
-  - web: `@animastor/web-generator` 0.2.0 (`e02646b`, публикация — владелец), app
-    `70a404b`; пакет 82 теста, app 211 (база 206), typecheck 0, vite build OK.
+  - web: `@animastor/web-generator` 0.2.0 (`e02646b`, опубликован), app `70a404b`,
+    bump `cdb7158` (main); пакет 82 теста, app 211 (база 206), typecheck 0, vite build OK.
   - Android: `7ef0754`, 0.2.2 (versionCode 4); `testDebugUnitTest` 197/0 (база 186),
     `apk-build.sh release` OK. APK на сайт — после ОК владельца.
   - `ANDROID_WEB_PARITY.md`: GAP Stage 155 → FIXED.

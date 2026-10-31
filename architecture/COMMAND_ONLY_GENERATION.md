@@ -14,6 +14,14 @@ GPU-генерация (audio / image / video) запускается **толь
 она создаёт задачи реестра. Нет автозапусков следующих стадий и нет фоновых
 запусков. Задачи создаются только для слоёв, включённых в layer-config.
 
+## Живой режим отложен
+
+Живой режим (генерация книги на лету со стриминговым буфером) отложен решением
+владельца 31.10.2026 из-за стоимости GPU. Текущий продукт — студия: генерация
+только по команде, с правкой героев и раскадровки. Код окон сохранён за
+`WINDOW_AUTO_NEXT_ENABLED` (off); при возврате к живому режиму он должен идти
+отдельной явной командой «смотреть вживую», а не фоном.
+
 ## Инвариант
 
 Сцена×стадия попадает в active index и в dispatch **только** когда выполнены
@@ -60,6 +68,43 @@ PENDING.
 | 12 | `markVersionStaleDirty` | READY → DIRTY и сразу в работу | только помечает stale (READY → DIRTY + PG stale) для включённых слоёв; диспатч решает гейт |
 | — | `iu-media` (player, GET чанка) | клал сцену в active index для «редиспатча» | запись проходит через гейт → без команды отклоняется |
 | — | `book-diff.markDirtyScenes` (правка в редакторе) | клал сцену в индекс, планировщик диспатчил по layer-config | запись проходит через гейт → без команды отклоняется |
+
+## Window-generator больше не ставит сцены на GPU
+
+`backend/src/services/window-generator.cjs` (окна VBook, `trigger-next-window`)
+создаёт чанки и placeholder-аудио новых сцен, но **не** записывает их в active
+index. Параметр запроса `register_for_gpu` больше ничего не делает. GPU-работа
+по этим сценам начинается только после команды «аудио»/«картинки»/«всё».
+
+## Флаг WINDOW_AUTO_NEXT_ENABLED
+
+Переменная окружения backend, читается при каждом вызове
+(`runtime-config.windowAutoNextEnabled()`). Значения `1`/`true`/`on` включают
+флаг, всё остальное — **выключено (по умолчанию)**. Флаг управляет двумя
+автозапусками:
+
+- window-generator: после окна обработать следующую сессию из очереди
+  (`queued`). При выключенном флаге очередь ждёт явной команды;
+- `scene-window.trySlideWindowOnComplete`: сдвиг окна сцен после их
+  завершения. При выключенном флаге возвращает `reason: 'auto_next_disabled'`.
+
+Даже с включённым флагом гейт не стартует сцену без задачи реестра. Окно
+останавливается на такой сцене, указатель окна дальше не сдвигается.
+
+## Статусы
+
+| Где | Статус | Когда ставится | Что значит |
+|---|---|---|---|
+| реестр задач (Redis) + PG `generation_tasks` | `blocked` | `no_worker_available` при dispatch стадии | нет живого воркера нужного типа; `blocked_reason: no_worker:<type>`; стадия → DIRTY; задача ничего не авторизует, повтор — только новой командой (она вытесняет blocked-задачу) |
+| реестр задач + PG `generation_tasks` | `interrupted` | старт backend: все `active` / `queued` / `running` | прогон прервал перезапуск; возобновление только кнопкой (новая команда вытесняет interrupted-задачу) |
+| реестр задач + PG `generation_tasks` | `cancelled` | cancel-worker, `PUT /layer-config` X=false, cancel-generation | команда отменена пользователем или выключением слоя |
+| PG `scene_assets` | `cancelled` | те же отмены | бывшая `pending`-строка отменённой стадии; `ready` / `placeholder` / `stale` не трогаются; reconcile и C8 её как работу не читают |
+| PG `scene_assets` | `failed` (`error: blocked:no_worker:<type>`) | `no_worker_available` | бывшая `pending`-строка заблокированной стадии |
+| PG `book_generation_sessions` | `failed` (`error: interrupted: …`) | старт backend: сессии `generating` / `pending` | окно VBook прервано перезапуском, не возобновляется само |
+| asset-state (Redis) | `dirty` вместо `pending` | no_worker, Stop All, осиротевший GENERATING без команды | стадия освобождена, но в работу не поставлена |
+
+progress-panel показывает строки `blocked` и `interrupted` (поля `status`,
+`blocked`, `blocked_reason`, `interrupted`), но не считает их «в работе».
 
 ## Команды и отмены
 

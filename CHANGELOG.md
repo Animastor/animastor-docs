@@ -27,8 +27,14 @@ All notable changes to Animastor are documented here.
     `layer_disabled`).
   - progress-panel — только реальные задачи (без `task_id=null`), новые поля
     `status/blocked/blocked_reason/interrupted`.
-  - window-generator не регистрирует сцены в GPU; следующее окно — за флагом
-    `WINDOW_AUTO_NEXT_ENABLED` (по умолчанию выкл.).
+  - window-generator больше не ставит сцены на GPU (не пишет в active index);
+    следующее окно и автосдвиг окна сцен — за флагом `WINDOW_AUTO_NEXT_ENABLED`
+    (по умолчанию выкл.).
+  - Живой режим (генерация на лету со стриминговым буфером) отложен решением
+    владельца из-за стоимости GPU; продукт — студия. Возврат — только отдельной
+    явной командой «смотреть вживую», не фоном.
+  - Новые статусы: задачи `blocked` / `interrupted`, `scene_assets.cancelled`
+    (таблица — в документе).
   - Тесты (тестовый стек, orchestration 0.3.0 из ветки): 3649 passing,
     28 pending, 0 failing; базовая линия main `4892781` — 3631 / 28 / 0.
   - Паритет: GAP — отрисовка blocked/interrupted и обработка 409 на web и Android.

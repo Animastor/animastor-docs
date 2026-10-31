@@ -8,6 +8,43 @@ All notable changes to Animastor are documented here.
 
 ### Changed
 
+- **Установщик воркера 0.2.4 — `animastor boot` и зависимости кастом-нод
+  запущенного ComfyUI** (живые прогоны 31.10 на TIR, тип A: TIR запускает
+  ComfyUI только после завершения startup-скрипта — ожидание внутри скрипта
+  = взаимная блокировка, doctor сдался 05:19:06, `main.py` стартовал 05:19:35;
+  после рестарта pip-пакеты ComfyUI-Qwen3-TTS пропали → «ComfyUI node classes
+  missing: Qwen3TTS*»). Коммиты: backend `4892781` (`@animastor/installer`
+  0.2.4), gpu-hub — repin `artifacts.lock.json`. Без выкатки.
+  - **`animastor boot`** — весь startup-скрипт на обоих типах нод: сразу
+    отделяет `doctor --yes --comfy-wait-ms 600000` (setsid, stdin
+    `/dev/null`, лог `~/animastor/logs/bootstrap.log` с заголовком времени
+    загрузки) и возвращает 0. Итог установки печатает готовую строку для
+    startup-скрипта.
+  - **Зависимости нод в Python запущенного ComfyUI**: интерпретатор — из
+    `/proc/<pid>` процесса `main.py`; `requirements.txt` каждой обязательной
+    ноды профиля проверяется в нём (без сети), недостающее — `pip install -r`
+    с закреплённым torch платформы. boot/`--yes` — без вопроса, интерактивно —
+    один вопрос.
+  - **Перезапуск платформенного ComfyUI** — только при включённой опции
+    (`--restart-platform-comfy` / `--no-restart-platform-comfy`, запись
+    `installer_options.restartPlatformComfy`, в boot на типе A — по умолчанию
+    да): останавливается ровно проверенный pid, ожидание нового pid +
+    `/system_stats` + классов нод. Не поднялся / без классов / опция выключена
+    — FAILED с причиной, воркер не запускается.
+  - **Классы нод не FAILED сразу**: после доустановки зависимостей или смены
+    pid ComfyUI — перепроверка до конца окна ожидания.
+  - **Тип B**: зависимости — в Python своего ComfyUI (процесс, иначе venv),
+    перезапуск своего процесса; boot типа B больше не ждёт платформенный
+    ComfyUI.
+  - Тесты: `tests/installer-boot-v024.test.js` (X1–X9c, 20 тестов); mocha —
+    414 passing, 0 failing. Ранее существовавшие падения script-тестов
+    (`installer-cpu` 11/16/24/25, `installer-resume` R2/R9 — те же на
+    `40656a0`) раньше скрывались таймингом `mocha --exit`; теперь их итог
+    успевает вывестись и `npm test` возвращает 1. Не исправлены в этой задаче.
+  - Документы: `04-planning/INSTALLER_BOOT_STARTUP.md` (переписан: тип A и
+    B — `animastor boot`, почему не `exec`/ожидание в скрипте),
+    `04-planning/INSTALLER_ARCHITECTURE.md` §7.5.
+
 - **Установщик воркера 0.2.3 — boot-режим типа A ждёт платформенный ComfyUI**
   (живой прогон 31.10 на TIR: стартовый скрипт `animastor doctor --yes
   --comfy-wait-ms 180000` запустился раньше платформенного `main.py`; 0.2.2

@@ -3,7 +3,8 @@
 > **Version:** 1.0.0 (canonical — code audit, not design draft)
 > **Status:** Current architecture as of HEAD (2026-08-30); install UX
 > updated 2026-10-30 — see §7.1 (installer `0.2.0`, bootstrap `1.2.0`,
-> worker bundle `2.2.0`); boot gate — §7.4 (installer `0.2.3`, 2026-10-31)
+> worker bundle `2.2.0`); boot gate — §7.4 (installer `0.2.3`, 2026-10-31);
+> `animastor boot` + custom-node deps of the running ComfyUI — §7.5 (installer `0.2.4`, 2026-10-31)
 > **Installer version:** 0.2.0 (`animastor-backend: packages/animastor-installer/package.json`)
 >
 > This document describes the **actually implemented** architecture of Animastor
@@ -625,6 +626,97 @@ OK + `.env` rewritten, W2 no process → FAILED without worker, W3 process
 without answer → full address, W4 port/prefix change between boots, W4b type
 B, W5 readiness window, W6 status label, W7 port cosmetics + managed
 unchanged).
+
+### 7.5 `animastor boot` and custom-node dependencies (installer 0.2.4)
+
+Live TIR boots of 2026-10-31 (type A, `bootstrap.log` on the node):
+
+- TIR starts its ComfyUI only AFTER the startup script has finished. A
+  `doctor` that waits inside the script is a deadlock: doctor gave up at
+  05:19:06, `main.py` started at 05:19:35.
+- Only `/home` survives a restart. The pip packages of the custom nodes
+  (ComfyUI-Qwen3-TTS: `custom_nodes/qwen3-tts/requirements.txt`) live in the
+  image's site-packages and are gone; the node directory stays, ComfyUI starts
+  without the node → `ComfyUI node classes missing: Qwen3TTS*`.
+- Owner's working workaround (OK at 05:37Z): a background block that waits for
+  `main.py`, runs `pip install -r …/qwen3-tts/requirements.txt`, `pkill`s
+  `main.py` (the platform starts it again) and then runs `doctor --yes`.
+  0.2.4 makes this the installer's own behaviour, without a hand-written script.
+
+**`animastor boot`** (`cli.cmdBoot`) is the whole startup script on both node
+types: `~/.local/bin/animastor boot`. It spawns `doctor --yes` detached
+(`detached: true` = new session / setsid, stdin `/dev/null`, stdout+stderr
+appended to `~/animastor/logs/bootstrap.log`, `ANIMASTOR_BOOT=1`), writes a
+header `===== animastor boot <now> (system boot <btime from /proc/stat>) =====`
+and the child's pid/argv to the log, prints one line and exits 0 at once. The
+child gets `--comfy-wait-ms 600000` unless the flag (or
+`ANIMASTOR_COMFY_WAIT_MS`) is given; the recorded `--state/--root/--worker-dir/
+--hub-url` of the `animastor` shim are passed through. The install result
+prints the line for the startup script:
+`Node startup script (one line): export PATH="$HOME/.local/bin:$PATH"; <tool> boot`.
+
+**Python of the running ComfyUI** (`engine/node-deps.pythonOfProcess`): from
+`/proc/<pid>` of the `main.py` — absolute `argv[0]`; a relative `python*` via
+`VIRTUAL_ENV` / `PATH` from `/proc/<pid>/environ`; then `/proc/<pid>/exe`.
+Never a guessed `python3`.
+
+**Check** (`checkNodeDeps`): for every `required` `custom_node` of the profile
+whose directory holds a `requirements.txt`, a script run as `<python> -I -c`
+evaluates each line with `packaging.requirements` (fallback `pip._vendor`) and
+`importlib.metadata`: `ok | missing | mismatch | skipped (marker) | unparsed`.
+No network, nothing installed. Optional nodes (ComfyUI-Manager) are not
+checked — a missing optional dependency must not restart the platform's
+ComfyUI on every boot.
+
+**Install** (`installNodeDeps`): `<python> -m pip install -r <req>` with the
+installed `torch` / `torchvision` / `torchaudio` pinned in
+`<state dir>/node-deps-constraints.txt` (pip never replaces the platform's
+torch build); on a permission error one retry with `--user`. After pip the
+check runs again; still unsatisfied → `FAILED`, no restart.
+
+**Type A gate** (`cli.platformNodeDepsGate`, after the 0.2.3 gate, before the
+plan/engine; only for a verified foreign instance):
+
+| Situation | Behaviour |
+|---|---|
+| deps satisfied | nothing; interactive run without a recorded option asks once whether boot may restart the platform's ComfyUI, the answer → `installer_options.restartPlatformComfy` |
+| deps missing, boot / `--yes` | install without a question |
+| deps missing, interactive | ONE question: install `<what>` into `<python>` and restart the platform's ComfyUI (pid N); the answer is recorded as the restart option when none was recorded |
+| restart allowed | `restartPlatformComfyUI`: `/proc/<pid>/cmdline` re-read (must still be a `main.py`, a recycled pid is never signaled), `SIGTERM` to exactly that pid (`SIGKILL` after 15 s), then wait for a new pid + `GET /system_stats` + the node's `provides_classes` in `/object_info`, progress every 30 s. The installer never starts the platform's ComfyUI itself |
+| restart not allowed | the foreign `main.py` is not signaled; `FAILED`: deps installed, ComfyUI not restarted; fix: restart it from the platform or `animastor doctor --restart-platform-comfy` |
+| platform did not start ComfyUI again in the window | `FAILED`: `the platform did not start ComfyUI again within N s after it was stopped (old pid P) — start it from the platform console` |
+| new pid answers without the classes | `FAILED`: `the platform started ComfyUI again (pid P at <url>) but it answers, node classes missing: … after N s` |
+
+Any `FAILED` of the gate stops the run before the engine (no worker against a
+ComfyUI without the nodes): result check `Custom-node dependencies` ✗ with the
+cause and the fix, exit 1.
+
+**Restart option** (`cli.restartPlatformComfyDecision`): `--restart-platform-comfy`
+/ `--no-restart-platform-comfy` > recorded
+`installer_options.restartPlatformComfy` > boot default (yes on type A) >
+unset (interactive asks). The engine keeps the recorded value on every run.
+
+**Node classes are not FAILED at once** (`runVerification`,
+`options.nodeClassesDeadline`): when deps were just installed (either path) or
+the ComfyUI pid differs from the recorded `comfy_owner.pid`, missing classes
+are re-polled (`/object_info`) until the end of the wait window (the window
+start + `--comfy-wait-ms`); otherwise the check fails at once as before.
+
+**Type B (managed)**: no platform gate. In engine step 4.3 the same check
+runs in the Python of the installer's own `main.py` (else
+`<root>/venv/bin/python`); unsatisfied nodes join the existing pip retry list,
+and the existing "nodes changed → `restartManagedComfyUI`" restarts its own
+instance. A type B boot (`components.comfyui.owned`, not platform-owned by
+record) no longer waits `--comfy-wait-ms` for a platform ComfyUI.
+
+Tests: `tests/installer-boot-v024.test.js` (X1 boot detaches with
+`doctor --yes --comfy-wait-ms 600000`, X1c real detach — own session, returns
+before the child, log written; X2 interpreter from `/proc`; X2c the check
+script in a real Python; X3 deps + restart → new pid → OK; X4 without the
+option the foreign `main.py` is not signaled → FAILED; X5 classes never
+appear → FAILED; X6 platform does not restart → FAILED; X6c recycled pid not
+signaled; X7/X7b/X7c class re-check window; X8 option precedence + recorded
+answer; X9/X9b/X9c type B).
 
 ### Hub Artifact Serving (`gpu-hub/gpu-hub.js`)
 

@@ -8,6 +8,37 @@ All notable changes to Animastor are documented here.
 
 ### Changed
 
+- **Генерация только по явной команде** (правило владельца; разбор инцидента
+  BA `reports/2026-10-31/auto-image-task-ba-incident.md`). Описание и полная
+  таблица бывших автозапусков: `architecture/COMMAND_ONLY_GENERATION.md`.
+  backend ветка `fix/command-only-generation` (`e03bc9a`, `e0074f1`),
+  `@animastor/orchestration` 0.3.0 (npm publish — владелец). Без выкатки.
+  - Инвариант: сцена×стадия попадает в active index и dispatch только при
+    активной задаче реестра этой стадии, включённом слое и отсутствии отмены
+    (`runtime/command-gate.js`).
+  - Удалены `PROGRESS_TO_IMAGE` / `PROGRESS_TO_VIDEO` и `isInFlight`-override.
+    Ремонтные фиксы reconcile — только под командой. C8 и старт backend работу
+    не создают: задачи → `interrupted`, сессии окон не возобновляются.
+  - `no_worker_available` → стадия и задача `blocked` («нет воркера <type>»),
+    без автоповтора. force — только для сцен×стадий команды.
+  - `PUT /layer-config` с выключенным слоем останавливает стадию.
+    cancel-worker и cancel-generation переводят PG `scene_assets` pending →
+    `cancelled`. `/regenerate` — только для включённых слоёв (409
+    `layer_disabled`).
+  - progress-panel — только реальные задачи (без `task_id=null`), новые поля
+    `status/blocked/blocked_reason/interrupted`.
+  - window-generator больше не ставит сцены на GPU (не пишет в active index);
+    следующее окно и автосдвиг окна сцен — за флагом `WINDOW_AUTO_NEXT_ENABLED`
+    (по умолчанию выкл.).
+  - Живой режим (генерация на лету со стриминговым буфером) отложен решением
+    владельца из-за стоимости GPU; продукт — студия. Возврат — только отдельной
+    явной командой «смотреть вживую», не фоном.
+  - Новые статусы: задачи `blocked` / `interrupted`, `scene_assets.cancelled`
+    (таблица — в документе).
+  - Тесты (тестовый стек, orchestration 0.3.0 из ветки): 3649 passing,
+    28 pending, 0 failing; базовая линия main `4892781` — 3631 / 28 / 0.
+  - Паритет: GAP — отрисовка blocked/interrupted и обработка 409 на web и Android.
+
 - **Установщик воркера 0.2.4 — `animastor boot` и зависимости кастом-нод
   запущенного ComfyUI** (живые прогоны 31.10 на TIR, тип A: TIR запускает
   ComfyUI только после завершения startup-скрипта — ожидание внутри скрипта

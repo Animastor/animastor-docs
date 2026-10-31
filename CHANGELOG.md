@@ -22,7 +22,11 @@ All notable changes to Animastor are documented here.
   - web: `@animastor/web-generator` 0.2.0 (`e02646b`, опубликован), app `70a404b`,
     bump `cdb7158` (main); пакет 82 теста, app 211 (база 206), typecheck 0, vite build OK.
   - Android: `7ef0754`, 0.2.2 (versionCode 4); `testDebugUnitTest` 197/0 (база 186),
-    `apk-build.sh release` OK. APK на сайт — после ОК владельца.
+    `apk-build.sh release` OK.
+  - Выкатка 31.10: web app `cdb7158` → `www/app` (`index.html` sha256 `2728008d…`);
+    APK 0.2.2 (versionCode 4, sha256 `9b2f05fa…`, тот же ключ) →
+    `downloads/animastor-android-latest.apk`; animastor-site `5d7f598`
+    (version.json 0.2.2).
   - `ANDROID_WEB_PARITY.md`: GAP Stage 155 → FIXED.
 
 - **Генерация только по явной команде** (правило владельца; разбор инцидента

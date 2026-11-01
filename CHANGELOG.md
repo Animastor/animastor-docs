@@ -4,6 +4,28 @@ All notable changes to Animastor are documented here.
 
 ---
 
+## 2026-11-01
+
+### Added
+
+- **Единые скрипты выкладки фронтов** (`animastor-deploy`, ветка
+  `deploy-scripts`): `scripts/deploy-web.sh <commit> [--dry-run]` и
+  `scripts/deploy-apk.sh <apk> [--dry-run]` — выкладка web-фронтенда и
+  Android APK только этими скриптами, ручной rsync/cp запрещён
+  (`agents/AGENTS.md`). deploy-web: чистый src + HEAD=commit → сборка →
+  бэкап `www-app-pre-<commit>-<UTC>` → rsync в три шага (без index.html →
+  index.html → --delete) → diff/sha256 в proxy/curl 200+бандл 200.
+  deploy-apk: apksigner (сертификат `aa65465a…fd0b`) → aapt2 versionCode >
+  текущего в `data/downloads` → сверка `version.json` (коммит в
+  animastor-site + `git -C www/site pull --ff-only`) → бэкап
+  `apk-pre-<версия>-<UTC>` → tmp+mv → curl sha256 = исходному.
+  Оба: `set -euo pipefail`, итог + команда отката, `--dry-run` без выкладки.
+  Прогнаны dry-run на текущих версиях (web 5c595e6 — OK; APK 0.2.3/5 —
+  корректный стоп «versionCode не больше текущего»).
+  Документация: `architecture/DEPLOY_WEB_APK.md`.
+
+---
+
 ## 2026-10-31
 
 ### Changed

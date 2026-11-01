@@ -20,8 +20,16 @@ All notable changes to Animastor are documented here.
     `WorkerSetupWizardFragment` (`maskSecret` + JVM-тест на тех же фикстурах),
     текст шага ru/en; `testDebugUnitTest` 198/0 (база 197),
     `apk-build.sh release` OK.
-  - Публикация `@animastor/installer` 0.2.4 и `@animastor/web-workers` 0.2.0 —
-    владелец; выкатка backend → web app → APK по ОК. Отчёт:
+  - Публикация (владелец): `@animastor/installer` 0.2.4 — tarball сверен с
+    `artifacts.lock` хаба (37 файлов, tree `c94036b7…`); `@animastor/web-workers`
+    0.2.0 — `shasum dfcc7570…` совпал с локальной сборкой `a64e444`.
+  - backend `e285141` (main): `@animastor/installer` ^0.2.4 + lock (integrity
+    registry), тест контракта переписан под один шаг; `scripts/test-backend.sh`
+    3649/28/0. approve-коммит `0b3ca54` (`APPROVED_COMMIT` = `e285141`); образ —
+    dispatch `commit=0b3ca54`, `image_tag=deploy-e285141`.
+  - web app `5c595e6` (main): lock на `@animastor/web-workers` ^0.2.0;
+    typecheck 0, 211/211, vite build OK.
+  - Выкатка backend → web app → APK — пошагово, по ОК. Отчёт:
     `reports/2026-10-31/fronts-installer.md`.
 
 - **Фронты под Stage 155 «генерация только по команде»** (web + Android в одной

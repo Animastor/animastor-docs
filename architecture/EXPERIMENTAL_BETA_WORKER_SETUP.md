@@ -147,6 +147,10 @@ message — fail-closed, no fallback.
 - In **Settings → Private Workers** the status pill flips from **OFFLINE** to
   **ONLINE** within ~30 s of the first successful beacon.
 - `last seen` updates continuously while the worker runs.
+- On startup the worker reports its bundle version in `POST /api/v1/worker/verify`
+  (`worker_version`); the backend stores it in `workers.version`. The field is
+  optional and diagnostic only — older bundles omit it and keep the previous
+  value.
 
 Status is a derived liveness hint only — authorization is always decided by the
 credential, never by the status pill.

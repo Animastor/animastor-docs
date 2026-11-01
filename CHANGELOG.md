@@ -40,6 +40,23 @@ All notable changes to Animastor are documented here.
     +1 pending — byte-sync npm-копии пропускается до публикации 0.3.1).
     gpu-hub `npm test` 35/0, пакет orchestration 42/0.
 
+### Changed
+
+- **Диагностика GPU-прогона 01.11** (ветка `fix/gpu-run-log-noise`; разбор —
+  `reports/2026-11-01/gpu-audio-image-run-analysis.md`):
+  - backend: `preview source not found` для ещё не сгенерированного IU — одна
+    строка info на IU вместо `⚠️` на каждый запрос (404 не изменился);
+    `CANONICAL IU IMAGE` — только при смене файла/размера/mtime, а не на каждом
+    цикле reconcile;
+  - gpu-hub: истёкший heartbeat без running-джобов — info
+    `[GPU] worker offline`; `💀 GPU timeout` — только при живых джобах, с их
+    числом;
+  - `POST /api/v1/worker/verify` принимает необязательный `worker_version` и
+    сохраняет его в `workers.version` (диагностика; старые бандлы его не шлют —
+    предыдущее значение сохраняется);
+  - `animastor-deploy/nginx`: `client_body_buffer_size 4m` в `location /gpu/`,
+    чтобы ~1,5 МБ base64 результата не уходили в temp-файл.
+
 ### Added
 
 - **Единые скрипты выкладки фронтов** (`animastor-deploy`, ветка

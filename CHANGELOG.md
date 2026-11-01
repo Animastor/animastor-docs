@@ -6,6 +6,40 @@ All notable changes to Animastor are documented here.
 
 ## 2026-11-01
 
+### Fixed
+
+- **GPU-результат обрабатывается один раз** (P1 из
+  `reports/2026-11-01/gpu-audio-image-run-analysis.md`: HTTP-push hub → backend,
+  затем reconcile Phase A через 20–60 с повторно обрабатывал оставшийся
+  `animastor:result:*` мимо `animastor:result-processed:*` → 3× ложный
+  `no_active_dispatch`, 1× `duplicate_same_fence`, `iu-progress` = 3 при 2 IU).
+  Описание: `architecture/GPU_HUB_CONTRACT.md` §8.1, §8.5, §10 п. 2a.
+  - **ACK — на стороне hub** (единственный писатель ключа и единственный, кто
+    видит ответ backend): после `2xx {ok:true}` или `{ok:true, rejected:true}`
+    ключ удаляется атомарно «если значение не изменилось» (ключ — на сцену×тип,
+    следующий IU той же сцены мог его перезаписать). При `deduped`, не-2xx и
+    нечитаемом ответе ключ остаётся для reconcile. gpu-hub `d2b49db`, релиз
+    по регламенту (тег `v0.2.6`) — владелец; не выкачено.
+  - **Reconcile** (`@animastor/orchestration` 0.3.1, npm publish — владелец):
+    перед `handleTaskResult` читает маркер маршрута; `done:<dispatch_id>` того же
+    dispatch → ключ удаляется молча. Маркер `'1'`, другого dispatch или его
+    отсутствие — как раньше, через fence. Терминальный отказ дубля — info,
+    сироты — warn. backend `3a09756`.
+  - **Маршрут** `/gpu/task/result`: завершённая доставка пишет маркер
+    `done:<dispatch_id>` (ключ по-прежнему не зависит от dispatch).
+  - **`iu-progress`**: инкремент один раз на IU×fence
+    (`animastor:iu-progress-ids:*`, SADD); повтор с тем же fence не считается,
+    перегенерация (новый fence) — считается. Ключ счётчика — по-прежнему число,
+    чтение с клампом; старые значения допустимы, миграции нет.
+  - Не менялись: fence/receipt-гейт, dedup маршрута, command-gate Stage 155.
+    Перегенерация audio/video в пределах TTL по-прежнему публикуется через
+    reconcile (очистка маркера для audio пишет ключ без `build_id` — no-op;
+    отдельная находка, не исправлялась).
+  - Тесты (тестовый стек, orchestration 0.3.1 из ветки): 3655 passing,
+    29 pending, 0 failing; база main `0b3ca54` — 3649 / 28 / 0 (+7 новых,
+    +1 pending — byte-sync npm-копии пропускается до публикации 0.3.1).
+    gpu-hub `npm test` 35/0, пакет orchestration 42/0.
+
 ### Added
 
 - **Единые скрипты выкладки фронтов** (`animastor-deploy`, ветка

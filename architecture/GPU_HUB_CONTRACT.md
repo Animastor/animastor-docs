@@ -332,7 +332,7 @@ in backend src and gpu-hub must belong to a registered family
 | `animastor:processing-claimed` | hash | `job_id` → `{first_seen}` orphan-sweep bookkeeping. |
 | `animastor:dead-letter` | list (TTL 7d) | Poison / requeue-limit entries `{reason, ts, entry}` — kept for audit, never requeued. |
 | `animastor:job:{dispatch_id}:{job_id}` | string (TTL 3600) | Enqueue dedup, `SET NX EX`. BEST-EFFORT only — the authoritative result dedup is backend-side (`animastor:result-processed:*`). Backend deliberately DELs keys before legitimate re-dispatch (frozen debt, §8.7). |
-| `animastor:result:{build_id}:{bookId}:{chapterId}:{sceneId}:{stage}` | string (TTL 3600) | Result handoff, JSON `{job_id, result_base64, build_id, dispatch_id, protocol_version}`. Written on `/task/result` BEFORE backend forwarding (recovery path). |
+| `animastor:result:{build_id}:{bookId}:{chapterId}:{sceneId}:{stage}` | string (TTL 3600) | Result handoff, JSON `{job_id, result_base64, build_id, dispatch_id, protocol_version}`. Written on `/task/result` BEFORE backend forwarding (recovery path). Since hub v0.2.6: compare-and-deleted by the hub on a final backend ACK (§10.2a). The key is per scene×stage — the next IU of the same scene overwrites it. |
 | `animastor:error:{job_id}` | string (TTL 3600) | Error fallback key, JSON `{job_id, build_id, dispatch_id, protocol_version, reason, ts}` — written only when 5 backend delivery retries fail. |
 | `animastor:gpu-hub:workers` | hash (EXPIRE 900) | Worker registry `worker_id` → `{id, type, gpu, vram, version, image_tag, protocol_version, workspace_id, last_seen}`. TTL prunes stale registrations. |
 | `animastor:worker:heartbeat:{type}:{worker_id}` | string (TTL 30) | Heartbeat `{type, worker_id, ts, current_job_id, current_dispatch_id, workspace_id, mode, version, image_tag, protocol_version[, share_policy]}`. Written by /beacon, /task/next claim, and the 10s sweep refresh; cleared (busy fields null) on completion. |
@@ -387,6 +387,13 @@ or unscoped (full wipe). Backend also holds authoritative result/error dedup
 families (`animastor:result-processed:*`, `animastor:error-processed:*`) and
 the per-book cancel flag (`animastor:generation:cancel:*`) — all
 backend-owned; the hub never touches them.
+
+`animastor:result-processed:{job_id}:{build_id}` (TTL 3600, key
+dispatch-independent since Stage 114) carries a value since 2026-11-01:
+`'1'` = acquired, delivery in flight (also the pre-2026-11-01 value);
+`done:{dispatch_id}` = delivery settled by the route (fenced commit confirmed
+or terminal fence verdict). Writer: result route only; reader: reconciliation
+Phase A (§10.2a).
 
 ---
 
@@ -443,6 +450,37 @@ rollout is NOT supported — all three components reject a mismatching
 2. **Complete callback** — hub → `POST ${BACKEND_URL}/gpu/task/result`
    (x-api-key when configured). Body adds audit-only `worker_id`,
    `workspace_id` to the worker's payload. Backend re-verifies ownership.
+   **2a. Result ACK** (2026-11-01, P1 of
+   `reports/2026-11-01/gpu-audio-image-run-analysis.md`: every result was
+   processed twice — HTTP push, then reconcile replayed the left-over
+   `animastor:result:*` past the route dedup). Two independent halves:
+   - *Hub (v0.2.6)* — the writer of the fallback key is the only party that
+     sees the backend's answer, so the hub deletes it. Final ACK =
+     `2xx` with `{ok:true}` (processed) or `{ok:true, rejected:true}`
+     (terminal — a replay is rejected the same way) → atomic
+     compare-and-delete (`GET == stored value → DEL`): if the next IU of the
+     same scene overwrote the key meanwhile, that copy stays. NOT final →
+     key kept: `{ok:true, deduped:true}` (the dedup marker may belong to an
+     older dispatch of the same job_id, see below), non-2xx after 5 retries,
+     unreadable body.
+   - *Backend reconcile (Phase A, `@animastor/orchestration` 0.3.1)* — before
+     `handleTaskResult` it reads `animastor:result-processed:{job}:{build}`.
+     `done:{dispatch_id}` with the dispatch of the result key → key DELeted
+     silently, handler not called. In-flight `'1'`, a marker of another
+     dispatch or none → fenced handler as before. Terminal reject of a
+     replay whose marker exists → info log; of an orphan (no marker) → warn.
+   - Why both: the halves work alone (old hub + new backend → reconcile
+     drops the duplicate; new hub + old backend → no fallback copy left
+     after a processed delivery). The route dedup stays dispatch-independent
+     and fence/receipt gating is unchanged; audio/video re-dispatch does not
+     clear the marker (`…:{chunk}:audio` without `build_id` — a no-op), so a
+     regeneration within the TTL is answered `deduped` over HTTP and is
+     published by reconcile — that path is preserved on purpose.
+   - Ready chain: `animastor:iu-progress:*` is incremented once per
+     IU × fence (`SADD animastor:iu-progress-ids:{book}:{ch}:{sc}:image
+     {iuId}:{fence}`), so `duplicate_same_fence` replays no longer count.
+     The counter stays an integer string; readers clamp
+     (`iuReadyFromCounters`), values written before the fix are tolerated.
 3. **Error callback** — hub → `POST ${BACKEND_URL}/gpu/task/error`
    (notifyBackendError: 5 retries × 500 ms → fallback Redis key). Reasons:
    worker-supplied reason, `worker_timeout`, `orphaned_task`.

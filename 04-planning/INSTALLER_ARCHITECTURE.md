@@ -5,7 +5,7 @@
 > updated 2026-10-30 — see §7.1 (installer `0.2.0`, bootstrap `1.2.0`,
 > worker bundle `2.2.0`); boot gate — §7.4 (installer `0.2.3`, 2026-10-31);
 > `animastor boot` + custom-node deps of the running ComfyUI — §7.5 (installer `0.2.4`, 2026-10-31)
-> **Installer version:** 0.2.0 (`animastor-backend: packages/animastor-installer/package.json`)
+> **Installer version:** 0.2.4 (`animastor-backend: packages/animastor-installer/package.json`)
 >
 > This document describes the **actually implemented** architecture of Animastor
 > Installer based on a full code audit, tests, and git history.
@@ -368,9 +368,15 @@ re-download, worker deployed but never started, "scroll up" with nothing above).
 
 **Web / Setup Contract.** The Linux install step is ONE command
 `curl -fsSL "<url>" | bash` (step id `run-bootstrap`; no `download-bootstrap`
-step). Setup Contract: `bootstrapOneLiner()` (installer `setup-contract.js`);
-web: `bootstrapOneLiner()` + `normalizeInstallSteps()` (merges the legacy
-two-step contract) in `@animastor/web-workers`.
+step). Setup Contract: `bootstrapOneLiner()` (installer `setup-contract.js`)
+since installer `0.2.0`; backend `0.2.4` is the version shipped today. Clients
+render `steps` verbatim: `@animastor/web-workers` `0.2.0` and Android dropped
+the temporary `normalizeInstallSteps()` merge of the legacy two-step contract
+— it is a no-op against `0.2.4` and was removed together with the backend bump
+(`@animastor/installer` `0.2.4`, published from backend main). The quoted
+one-liner is also one-tap copyable, the Worker Key is masked with a
+Show/Hide toggle, and the install step names the worker + type + the status
+the backend derives from the hub (web and Android alike).
 
 **Prompts.** Every question and the hidden Worker Key are read from the
 controlling terminal (`engine/tty.js`): one raw-mode line editor, no

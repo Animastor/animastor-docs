@@ -6,6 +6,8 @@
 > **Эталон:** web (`animastor-web`: `frontends/app/src`, `packages/*/src`).
 > **Состояние на 2026-10-29:** android `main` `2d23f49` (0.2.0, versionCode 2),
 > web `main` `38c59ad`.
+> **Состояние на 2026-10-31:** android `main` `209a179` (0.2.3, versionCode 5),
+> web `main` `a64e444`.
 
 Содержание: Правила паритета · Решения · Открытые GAP · Расхождения чата · Аудит
 (чекпойнты 1–5) · История (карта 2026-08-21).
@@ -63,7 +65,7 @@
 | Дата | Web | Android сейчас | Причина / как закрыть | Тег |
 |---|---|---|---|---|
 | 2026-10-31 | Stage 155 (`COMMAND_ONLY_GENERATION.md`): строки progress-panel по `state` — blocked «Нет воркера: <тип>» + «Повторить», interrupted «Прервано» + «Продолжить» (новая явная команда `/regenerate`, тот же тип и scope), cancelled «Отменено» без кнопок; 409 `layer_disabled` → «Включите слой «…», чтобы генерировать». Логика — `@animastor/web-generator` 0.2.0 `taskStatus.ts` + app `features/generation/commandErrors.ts` (web `e02646b`, `70a404b`) | То же: `TaskStatusHelpers.kt` (те же фикстуры в `TaskStatusHelpersTest`), `GenerateFragment` — android `7ef0754` (0.2.2, versionCode 4); `testDebugUnitTest` 197/0, `apk-build.sh release` OK | Закрыт обоими фронтами в одной задаче. Web в main `cdb7158` (app → `@animastor/web-generator` 0.2.0, опубликован владельцем). Отчёт: `reports/2026-10-31/fronts-command-statuses.md` | GAP → FIXED |
-| 2026-10-30 | Шаг установки воркера — ОДНА команда `curl -fsSL "<url>" \| bash` (URL в кавычках): `normalizeInstallSteps()` сливает старые шаги `download-bootstrap` + `run-bootstrap`, `bootstrapOneLiner()` (web `afd0b70`, `@animastor/web-workers` 0.1.1); текст `worker_setup_step_run_bootstrap_body` (ru/en) — «скопируйте команду целиком (одной строкой)…, итог ✓/✗». | `WorkerSetupWizardFragment` выводит `step.code` из Setup Contract как есть: при старом контракте backend — `curl -fsSL -o animastor-installer.sh <url>` без кавычек + `bash animastor-installer.sh`; старый текст `worker_setup_step_run_bootstrap_body` в `strings.xml`. | Android вне состава задачи «GPU-установщик UX» (нужны `testDebugUnitTest` + `apk-build.sh release`). Закрыть: перенести `bootstrapOneLiner`/`normalizeInstallSteps` в `WorkerSetupHelpers.kt` с JVM-тестами на тех же фикстурах + текст в `strings.xml` (ru/en). После выкатки backend с `@animastor/installer` ≥ 0.2.0 контракт сам отдаёт одну команду в кавычках — Android покажет её без правок кода, останется только текст. | ANDROID GAP |
+| 2026-10-30 | Шаг установки воркера — ОДНА команда `curl -fsSL "<url>" \| bash` (URL в кавычках), installer `0.2.4` (`bootstrapOneLiner()` в `setup-contract.js`, backend main). Legacy-нормализатор шагов удалён: на 0.2.4 `normalizeInstallSteps()`/`bootstrapOneLiner()` были no-op — `@animastor/web-workers` 0.2.0 (`a64e444`). Экран установки (оба фронта): копирование команды одной кнопкой, ключ скрыт/показ (`maskSecret`), «воркер · тип», статус из backend/hub. | То же: `WorkerSetupWizardFragment` рендерит `step.code` как есть + copy, `WorkerSetupHelpers.maskSecret` (JVM-тест на тех же фикстурах, что и web), строка «воркер · тип» и статус; текст `worker_setup_step_run_bootstrap_body` ru/en — «скопируйте команду целиком (одной строкой)…, итог ✓/✗». android `209a179` (0.2.3, versionCode 5), `testDebugUnitTest` 198/0 (база 197), `apk-build.sh release` OK. | Закрыт обоими фронтами в одной задаче. Остаётся выкатка: backend (`@animastor/installer` 0.2.4), web app (lock на `@animastor/web-workers` 0.2.0), APK — по ОК владельца. Отчёт: `reports/2026-10-31/fronts-installer.md` | GAP → FIXED |
 
 ---
 

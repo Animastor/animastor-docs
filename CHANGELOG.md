@@ -8,6 +8,22 @@ All notable changes to Animastor are documented here.
 
 ### Changed
 
+- **Экран установки GPU-воркера во фронтах** (контракт `@animastor/installer`
+  0.2.4: один шаг `curl -fsSL "<url>" | bash`, URL в кавычках; версия
+  установщика в `backend/package.json` — после bump на 0.2.4).
+  - `@animastor/web-workers` **0.2.0** (`a64e444`): legacy-нормализатор шагов
+    (`normalizeInstallSteps`/`bootstrapOneLiner`) удалён — на контракте 0.2.4
+    это no-op; экран установки: копирование команды одной кнопкой, ключ
+    скрыт/показ (`maskSecret`), «воркер · тип», статус из backend/hub;
+    i18n ru/en. typecheck 0, 107 тестов, tsup build OK.
+  - Android `209a179` **0.2.3** (versionCode 5): то же в
+    `WorkerSetupWizardFragment` (`maskSecret` + JVM-тест на тех же фикстурах),
+    текст шага ru/en; `testDebugUnitTest` 198/0 (база 197),
+    `apk-build.sh release` OK.
+  - Публикация `@animastor/installer` 0.2.4 и `@animastor/web-workers` 0.2.0 —
+    владелец; выкатка backend → web app → APK по ОК. Отчёт:
+    `reports/2026-10-31/fronts-installer.md`.
+
 - **Фронты под Stage 155 «генерация только по команде»** (web + Android в одной
   задаче, правило паритета 0). Панель генератора:
   - blocked → «Нет воркера: аудио/изображения/видео» + «Повторить»;

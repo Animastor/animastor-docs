@@ -29,8 +29,12 @@ All notable changes to Animastor are documented here.
     dispatch `commit=0b3ca54`, `image_tag=deploy-e285141`.
   - web app `5c595e6` (main): lock на `@animastor/web-workers` ^0.2.0;
     typecheck 0, 211/211, vite build OK.
-  - Выкатка backend → web app → APK — пошагово, по ОК. Отчёт:
-    `reports/2026-10-31/fronts-installer.md`.
+  - Выкатка 01.11: backend образ `sha256:d9cff390…` (compose `99c602b`;
+    в образе installer 0.2.4, контракт `[run-bootstrap, verify]`, команда
+    в кавычках), web app `index-BJ3WC8gk.js` (211/211, build OK), APK 0.2.3
+    (10 634 099 B, sha256 `c3d8c040…ff31`, site `fd40643`). Проверки: app 200,
+    `/health` 200, setup без сессии 401, APK 200, `version.json` 0.2.3.
+    Отчёт: `reports/2026-10-31/fronts-installer.md` §11.
 
 - **Фронты под Stage 155 «генерация только по команде»** (web + Android в одной
   задаче, правило паритета 0). Панель генератора:

@@ -304,6 +304,14 @@ invalid mode → `400 invalid_mode`.
 }
 ```
 
+`last_seen` in the API is **milliseconds** (live heartbeat `ts`, or the
+stored value × 1000). Storage (2026-11-02, WL-1): PG `workers.last_seen` is
+epoch **seconds** like every other timestamp column (existing ms values were
+normalized at startup; CHECK `workers_last_seen_seconds_check`). PG
+`workers.status/last_seen/version` mirror the hub heartbeats once per
+reconcile cycle (60 s) and are set `online` by `POST /worker/verify`; the API
+status is still derived from the live heartbeat key on read.
+
 Adapter (doesn't break ONLINE/OFFLINE/REVOKED):
 
 | base | last_seen | setup status |

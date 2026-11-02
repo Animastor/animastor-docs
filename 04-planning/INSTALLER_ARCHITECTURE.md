@@ -1021,6 +1021,60 @@ core range, O4 profile installed later, other profiles from install-state,
 O5 major change, CLI flag, the engine keeps the record (real
 `runInstallation`), a failed comparison is a warning.
 
+### 7.8 Worker readiness = ComfyUI API + the profile's node classes (installer 0.2.7, worker bundle 2.2.2)
+
+Live 2026-11-02 11:08–11:12 (`reports/2026-11-02/gpu-e2e-installer-025-logs.md`,
+step 0): worker 2.2.0 against a ComfyUI **without** the qwen-tts nodes took 6
+audio dispatches in 85 s. ComfyUI rejected each prompt within ~0.1 s
+(`No prompt_id`), and every `task/error` became a backend retry.
+"ComfyUI answered `/system_stats`" is not "this worker can run its profile".
+
+**Worker (bundle 2.2.2, `worker.cjs`).** After `ComfyUI ready` (the marker
+keeps its meaning: API reached) and before the first heartbeat and the first
+`GET /task/next`, the worker checks that `GET /object_info` lists every
+required class:
+
+| source of the list (first wins) | |
+|---|---|
+| `REQUIRED_NODE_CLASSES=A,B` | environment / `.env` |
+| `<worker dir>/node-classes.json` (`NODE_CLASSES_FILE`) | `{"profiles":{"<type>/<profile>":[…]}}`, only profiles of `WORKER_TYPE` |
+| none | previous behaviour (ComfyUI API only) + **one** warn line |
+
+- Classes missing → no task is requested, one line
+  `Not taking tasks: ComfyUI lacks node classes X, Y required by <profile> —
+  re-checking with backoff` per distinct reason (not per attempt). The check
+  is repeated with backoff 5 s → 300 s (`NODE_CLASS_RECHECK_MIN_MS/MAX_MS`).
+- All present → `Node classes ready: N/N (<profile>)`, the loop starts.
+- A prompt rejected by ComfyUI (e.g. a node vanished after a ComfyUI
+  restart) re-runs the gate before the next task. `task/error` carries
+  ComfyUI's reason: `No prompt_id: invalid_prompt: …`.
+- No new bundle file: the logic lives in `worker.cjs`, the manifests'
+  `worker_bundle.files` are unchanged.
+
+**Installer 0.2.7.** `node-classes.json` is written from the manifests'
+`provides_classes` (required dependencies only, sorted) by
+`engine/worker.writeNodeClasses`:
+
+- on a fresh install, after the bundle step (registered in
+  `components.worker.files_installed`);
+- in `preflightSelfUpdate`, i.e. on **every** install / `doctor` / `boot`
+  run and bundle update. A node installed by 0.2.6 or older (the TIR node)
+  gets the file on its next doctor/boot; it is registered for the
+  uninstaller;
+- an identical file is left untouched (temp + rename otherwise); never in
+  `--dry-run`; a write failure is a warning (the worker then falls back to the
+  API-only readiness).
+
+Hub release: worker bundle 2.2.2 + installer 0.2.7 → gpu-hub tag v0.2.8
+(repin of `artifacts.lock.json`).
+
+Tests: worker `tests/node-readiness.test.cjs` (spawned worker, fake
+ComfyUI/hub: missing classes → no polling, one line, backoff; classes appear →
+ready; no list → ComfyUI-only + one warn; env wins; rejected prompt →
+reason + re-gate); installer `tests/installer-v027.test.js` (N1 manifests →
+classes, N2 idempotent write, N3 preflight on an installed node + uninstall
+registration, N4 engine order, N5 dry-run).
+
 ### Hub Artifact Serving (`gpu-hub/gpu-hub.js`)
 
 | Endpoint | Purpose | Auth |

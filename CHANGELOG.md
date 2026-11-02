@@ -8,6 +8,23 @@ All notable changes to Animastor are documented here.
 
 ### Added
 
+- **Воркер 2.2.2 + установщик 0.2.7: воркер берёт задачи только когда в
+  ComfyUI есть ноды профиля.** Разведка 02.11 11:08–11:12: воркер 2.2.0
+  против ComfyUI без qwen-нод взял 6 audio-dispatch'ей за 85 с. На каждый
+  ComfyUI отвечал отказом (`No prompt_id`), каждый `task/error` превращался в
+  повтор backend. Теперь готовность = ComfyUI API отвечает **и**
+  `/object_info` содержит классы нод профиля. До этого нет heartbeat и
+  `task/next`, в лог пишется одна строка с причиной, проверка повторяется с
+  backoff 5 → 300 с. Отказ ComfyUI перезапускает проверку, а в `task/error`
+  уходит причина ComfyUI. Список классов задаётся `REQUIRED_NODE_CLASSES`
+  или `<worker>/node-classes.json`, без списка работает как раньше + один
+  warn. Установщик 0.2.7 пишет `node-classes.json` из `provides_classes`
+  манифестов при установке, обновлении бандла и в каждом doctor/boot, так
+  что уже установленная нода (TIR) получит его при следующем doctor/boot.
+  Описание: `04-planning/INSTALLER_ARCHITECTURE.md` §7.8. animastor-worker
+  `22ebe8e`, backend `7df8d81`. Релиз хаба (тег v0.2.8 = бандл 2.2.2 +
+  установщик 0.2.7) делается отдельной выкаткой.
+
 - **Установщик 0.2.6 — замены версий в overlay зависимостей нод; правило
   «одна GPU-нода — один профиль»**. E2E 02.11 (TIR, `audio/qwen-tts`): overlay
   `~/animastor/pydeps` (первый в `sys.path` всего ComfyUI) молча заменил версии
@@ -46,6 +63,39 @@ All notable changes to Animastor are documented here.
   `architecture/DEPLOY_WEB_APK.md` § deploy-docs.sh.
 
 ### Fixed
+
+- **GPU-цепочка: публикация аудио, recovery, audio-orch, отмена, `workers`**
+  (`reports/2026-11-02/gpu-e2e-installer-025-logs.md` §6.1, §6.2, §8 п.1–6;
+  backend `d3f35cd`, `@animastor/orchestration` 0.3.2). Фронты не меняются,
+  контракт API тот же.
+  - **Trim до commit.** Дополненный TTS-чанк обрезается до staging, manifest
+    описывает итоговый файл. Merge больше не переписывает закоммиченные
+    чанки. Инвариант: canonical не меняется вне fence.
+    `architecture/GPU_RESULT_PUBLICATION.md`.
+  - **Fence unrecoverable.** `canonical_content_mismatch` без staged-копии
+    пишет `animastor:fence-unrecoverable:<task>` (причина, время) и один
+    warn, без повтора каждые 60 с. Новый fence задачи не пропускается,
+    успешная публикация снимает запись. Ручная чистка fence `3227a8b2c281`
+    не делается: после выкатки backend пометит его сам.
+  - **Эпоха dispatch в audio-orch.** Новый dispatch даёт новое состояние
+    (`started_at=now`, `dispatch_id`, `expected_count`, без
+    `fail_reason`/`failed_at`). Watchdog застоя проваливает только запись
+    живого dispatch'а. Запись без `dispatch_id` или другого dispatch'а
+    получает `stale_state_ignored`. `failStage` без `dispatch_id` тоже
+    возвращает `stale_state_ignored`, без `[INVARIANT]`.
+    `architecture/COMMAND_ONLY_GENERATION.md` §«Эпоха dispatch».
+  - **Отмена чистит сцену.** `cancel-generation` и
+    cancel-worker/layer-config удаляют `audio-orch`/`video-orch` (кроме
+    DONE) и dispatch-receipts отменённых job'ов.
+  - **`workers.last_seen` в секундах** (миграция WL-1 мс-значений + CHECK),
+    API по-прежнему отдаёт мс. `verify` ставит `online`, reconcile раз в
+    60 с переносит heartbeat'ы хаба в PG `status/last_seen/version`.
+    `04-planning/private-worker-setup-contract-api.md`.
+  - Найдено и не менялось: ошибка воркера внутри активной команды остаётся
+    `transient` с retry-budget/circuit breaker
+    (`COMMAND_ONLY_GENERATION.md` §«Повтор после ошибки воркера»).
+  - Шаги владельца: публикация `@animastor/orchestration` 0.3.2 в npm, затем
+    bump в `backend/package.json` и выкатка backend.
 
 - **Установщик 0.2.5 — E2E 02.11, нода типа A (TIR, ComfyUI платформы от root,
   pid 370, `/usr/bin/python3`; переживает рестарт только `/home`)**. 0.2.4

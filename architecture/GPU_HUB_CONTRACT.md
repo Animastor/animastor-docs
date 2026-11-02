@@ -481,6 +481,9 @@ rollout is NOT supported — all three components reject a mismatching
      {iuId}:{fence}`), so `duplicate_same_fence` replays no longer count.
      The counter stays an integer string; readers clamp
      (`iuReadyFromCounters`), values written before the fix are tolerated.
+   - Publication of the result (stage → fenced commit → publish, manifest
+     proof, resume, terminal `fence-unrecoverable`) — backend-internal, see
+     `architecture/GPU_RESULT_PUBLICATION.md`.
 3. **Error callback** — hub → `POST ${BACKEND_URL}/gpu/task/error`
    (notifyBackendError: 5 retries × 500 ms → fallback Redis key). Reasons:
    worker-supplied reason, `worker_timeout`, `orphaned_task`.

@@ -147,6 +147,56 @@ progress-panel показывает строки `blocked` и `interrupted` (п�
   Статус ассета сцены (`scene_assets`) фронты не выводят; при отсутствии
   файла показывается нейтральное «Не сгенерировано».
 
+## Эпоха dispatch, отмена и stale-записи (2026-11-02)
+
+Основание: `reports/2026-11-02/gpu-e2e-installer-025-logs.md` §6.1, §8 п.3–5.
+Запись `animastor:audio-orch:*` отменённой попытки (11:09) пережила отмену.
+Новая команда (12:25) унаследовала её `started_at`, и watchdog через 28 с
+после dispatch'а пометил здоровый прогон FAILED (`chunk_stall_timeout:4619s`).
+Затем последовали `[FAIL-STAGE] Rejected … missing_dispatch_id` и
+`[INVARIANT] 1 audio-orch violations`.
+
+- **Каждый dispatch открывает новую эпоху audio-orch.**
+  `executeAudioDispatch` переводит запись в WAITING_CHUNKS с
+  `started_at=now`, `dispatch_id`, `expected_count`, `chunks_received=0`.
+  `fail_reason`, `failed_at` и `last_chunk_at` прошлой попытки удаляются
+  (`@animastor/orchestration` 0.3.2, хост `setWaitingChunks(…, epoch)`).
+- **Watchdog застоя сверяет dispatch_id.** Запись проваливается, только если
+  её `dispatch_id` равен живому `dispatch-meta` сцены. Запись без
+  `dispatch_id` (legacy) или другого dispatch получает статус
+  `stale_state_ignored`: одна info-строка на запись, FAILED не ставится.
+- **`failStage` без `dispatch_id`** возвращает
+  `{failed:false, reason:'stale_state_ignored'}`. Это штатный no-op, а не
+  `Rejected`. `failWaitingScene` без идентичности dispatch ничего не пишет:
+  нет FAILED, нет сброса dedup и нет нарушения инварианта.
+- **Отмена чистит состояние сцены.** `cancel-generation` (по книге) и
+  `cancelStage` (cancel-worker, `layer-config` X=false; сцены × стадия)
+  удаляют записи `audio-orch`/`video-orch` не в фазе DONE и
+  dispatch-receipts `animastor:dispatch-intent:*` отменённых job'ов. Поздний
+  результат отменённого dispatch'а отклоняется как `receipt_missing`.
+  `dispatch-completed:*` остаются до TTL: по ним поздний callback
+  распознаётся как финализированный.
+
+### Повтор после ошибки воркера: известный пробел (не менялось)
+
+Разведка 02.11 11:08–11:12 (задача 6323, `sc-3708615c`): воркер 2.2.0 брал
+задачу и через ~0.1 с отвечал `POST /gpu/task/error` с причиной
+`No prompt_id`. ComfyUI без qwen-нод отклонял prompt. Backend
+классифицировал это как `transient`: `FAIL-STAGE → PENDING (re-dispatch
+queued)`, retry budget 10. Активная задача реестра (команда) по-прежнему
+авторизовала стадию, поэтому планировщик передиспатчил на следующем tick:
+6 dispatch'ей за 85 с. Затем открылся circuit breaker (`CIRCUIT_BLOCKED`
+каждые 5 с) до отмены в 11:11:23.
+
+Правило Stage 155 «повтор только новой командой» сейчас покрывает
+`no_worker_available`, но не ошибку воркера внутри команды: retry-budget и
+circuit breaker продолжают работать. В этой задаче исправлен источник
+проблемы: воркер 2.2.2 не берёт задачи без нод профиля
+(`04-planning/INSTALLER_ARCHITECTURE.md` §7.8), а ошибка ComfyUI в
+`task/error` теперь содержит причину. Политика повторов не менялась. Решение
+о том, считать ли ошибку воркера терминальной для команды, остаётся за
+владельцем.
+
 ## Выкатка
 
 Образ backend ставит `@animastor/orchestration` из npm. Порядок: публикация

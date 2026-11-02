@@ -6,6 +6,24 @@ All notable changes to Animastor are documented here.
 
 ## 2026-11-02
 
+### Added
+
+- **Выкладка зеркала документации — `prod/scripts/deploy-docs.sh
+  [--dry-run]`** (animastor-deploy `944cf51`). Зеркало `www/docs`
+  (`animastor.org/docs`, bind-mount `:ro`) обновляется только этим
+  скриптом, ручной rsync/cp запрещён (секция в `prod/agents/AGENTS.md`).
+  Скрипт по образцу `deploy-web.sh`: чистый `src/animastor-docs` на
+  `main` = `origin/main`, бэкап `backups/www-docs-pre-<commit7>-<UTC>/`,
+  `rsync -a --delete --exclude .git --exclude history` (каталог `www/docs`
+  не подменяется), проверки (`diff -rq -x .git -x history`, sha256
+  `CHANGELOG.md` в контейнере = хосту, 200 на `/docs/` и
+  `/docs/CHANGELOG.md`), печать команды отката; `set -euo pipefail`.
+  `--dry-run` печатает изменения и отдельно удаления через `rsync -ain`.
+  Выяснена причина «пустого» пробного rsync: `rsync -a -n` **без `-v`/`-i`
+  не печатает ничего** даже при различающихся файлах и удалениях —
+  пустой вывод ≠ отсутствие различий. Регламент:
+  `architecture/DEPLOY_WEB_APK.md` § deploy-docs.sh.
+
 ### Fixed
 
 - **Установщик 0.2.5 — E2E 02.11, нода типа A (TIR, ComfyUI платформы от root,

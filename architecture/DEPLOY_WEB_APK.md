@@ -1,7 +1,7 @@
-# Выкладка web-фронтенда и Android APK
+# Выкладка web-фронтенда, Android APK и зеркала документации
 
-**Date:** 2026-11-01
-**Status:** ACTIVE — регламент и инструменты выкладки фронтов
+**Date:** 2026-11-01 (обновлено 2026-11-02 — раздел deploy-docs.sh)
+**Status:** ACTIVE — регламент и инструменты выкладки фронтов и docs
 
 ---
 
@@ -12,11 +12,14 @@
   - `scripts/deploy-web.sh <commit> [--dry-run]`
   - `scripts/deploy-apk.sh <apk> [--dry-run]`
 - Ручной `rsync`/`cp` в `www/app` и `data/downloads` запрещён.
+- Зеркало документации (`www/docs`, `animastor.org/docs`) — **только**
+  скриптом `scripts/deploy-docs.sh [--dry-run]`; ручной `rsync`/`cp` в
+  `www/docs` запрещён (секция «Выкладка docs» в `prod/agents/AGENTS.md`).
 - `version.json` выкладывается только коммитом в `animastor-site`
   (из worktree в `work/`) с последующим `git -C www/site pull --ff-only`;
   `rsync`/`cp` в `www/site` запрещён.
 - Коммиты в `animastor-deploy` делаются из worktrees в `work/`, не из `src/`.
-- Оба скрипта: `set -euo pipefail`; любая ошибка — стоп до выкладки;
+- Все три скрипта: `set -euo pipefail`; любая ошибка — стоп до выкладки;
   в конце печатаются итог и команда отката.
 - Режим `--dry-run` прогоняет все проверки без выкладки. В `deploy-apk.sh`
   dry-run накапливает ошибки всех проверок (а не падает на первой) и
@@ -92,9 +95,49 @@ mv -f /home/animastor/data/downloads/.animastor-android-latest.apk.rollback \
 **Откат version.json:** revert коммита в `animastor-site`, затем
 `git -C www/site pull --ff-only`.
 
+## deploy-docs.sh [--dry-run]
+
+Выкладывает зеркало документации `www/docs`
+(`https://animastor.org/docs/` — nginx location `/docs/`, `root
+/usr/share/nginx` → bind-mount `/home/animastor/www/docs:/usr/share/nginx/docs:ro`)
+из чистого клона `src/animastor-docs`. Каталог `www/docs` скрипт не
+подменяет и не пересоздаёт — его держит nginx.
+
+1. Проверки (до любых изменений): `git fetch` в `src/animastor-docs`,
+   `git status --porcelain` пуст, ветка `main`, `HEAD = origin/main`;
+   контейнер `animastor-proxy` запущен. Печатается коммит.
+2. `--dry-run`: печатается
+   `rsync -ain --delete --exclude .git --exclude history src/animastor-docs/
+   www/docs/` и его вывод, разбитый на **список изменений** и отдельно
+   **список удалений**; ничего не меняется.
+   Важно: `rsync -a -n` без `-v`/`-i` не печатает НИЧЕГО даже при
+   различающихся файлах и «pending deletions» — пустой dry-run не
+   означает «различий нет».
+3. Без флага: бэкап `cp -a www/docs backups/www-docs-pre-<commit7>-<UTC>/`,
+   затем `rsync -a --delete --exclude .git --exclude history
+   /home/animastor/src/animastor-docs/ /home/animastor/www/docs/`.
+   Исключения: `.git` (внутренности клона), `history/` (отчёты
+   реорганизации — зеркало по спецификации «копия репо без `.git` и
+   `history`», `INVENTORY_REPORT_PHASE2A.md`; в зеркале их никогда не
+   было, docs-browser их не индексирует).
+4. Проверки после выкладки: `diff -rq -x .git -x history src www/docs`
+   пуст; `sha256 CHANGELOG.md` в контейнере `animastor-proxy` = хосту;
+   `https://animastor.org/docs/` и `https://animastor.org/docs/CHANGELOG.md`
+   → 200.
+5. В конце печатается команда отката; любая ошибка — стоп, после провала
+   проверок дальнейшие шаги не выполняются (при обрыве после бэкапа
+   trap печатает откат).
+
+**Откат:**
+```bash
+rsync -a --delete /home/animastor/backups/www-docs-pre-<commit7>-<UTC>/ \
+      /home/animastor/www/docs/
+```
+
 ## Инфраструктура
 
-- nginx (`animastor-proxy`) раздаёт `www/app` и `www/site` через bind-mount —
+- nginx (`animastor-proxy`) раздаёт `www/app`, `www/site` и зеркало
+  документации `www/docs` через bind-mount —
   перезапуск контейнера при выкладке не нужен.
 - APK отдаётся из `data/downloads` по точному location
    `/downloads/animastor-android-latest.apk`.

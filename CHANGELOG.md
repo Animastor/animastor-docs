@@ -100,6 +100,26 @@ All notable changes to Animastor are documented here.
     (`COMMAND_ONLY_GENERATION.md` §«Повтор после ошибки воркера»).
   - Шаги владельца: публикация `@animastor/orchestration` 0.3.2 в npm, затем
     bump в `backend/package.json` и выкатка backend.
+- **Переключатели слоёв (web + Android) — один PUT на действие пользователя
+  с итоговым состоянием**. Один клик давал 2–3 `PUT /book/:id/layer-config`,
+  в т.ч. с устаревшим телом: `image_enabled=true` висел 0.36 с (E2E 02.11,
+  логи backend 12:24:00.311 и 12:39:24.724), и в этом окне воркер уже был на
+  `image=false` — бэкенд мог работать с включённым слоем, который пользователь
+  уже выключил. Теперь отправка сериализована: в полёте не более одного PUT,
+  каждое тело — актуальные флаги (изменение, пришедшее пока PUT в полёте, уходит
+  после его подтверждения), синхронные setters одного действия схлопываются в
+  один PUT. `pending` (флаги ≠ подтверждённые или PUT в полёте) блокирует
+  переключатели и кнопки генерации слоёв до подтверждения сервером; ошибка PUT
+  держит `pending` и `lastError` и повторяет только следующим действием
+  пользователя (без авто-ретраев); `reset` после GET не затирает несохранённый
+  клик. Логика: web `features/generation/layerSync.ts` + `layerSync.test.ts`
+  (6 кейсов) и `state/generateStore.ts` (`layerConfigSaving`);
+  Android `ui/LayerConfigSync.kt` + `LayerConfigSyncTest.kt` (6 кейсов) и
+  `GenerateViewModel.layerConfigSavingFlow` / `GenerateFragment` (чипы
+  disabled, alpha 0.5). web `edada68` (vitest 217/0, `tsc --noEmit` OK),
+  android `2c09dbf` (0.2.4, versionCode 6, `testDebugUnitTest` 204/0,
+  `./apk-build.sh release` OK). Выкатка — `deploy-web.sh` / `deploy-apk.sh`
+  после ревью.
 
 - **Установщик 0.2.5 — E2E 02.11, нода типа A (TIR, ComfyUI платформы от root,
   pid 370, `/usr/bin/python3`; переживает рестарт только `/home`)**. 0.2.4

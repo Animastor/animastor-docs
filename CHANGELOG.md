@@ -4,6 +4,25 @@ All notable changes to Animastor are documented here.
 
 ---
 
+## 2026-11-02
+
+### Fixed
+
+- **Web: скачивание книги сохранялось как `<id>.vbook.txt`.** `getBlob()`
+  собирал `new Blob(chunks)` без типа, поэтому браузер считал файл
+  `text/plain` и дописывал расширение. MIME теперь выбирается на клиенте по
+  типу экспорта и принудительно проставляется на blob перед `<a download>`:
+  `book` → `application/octet-stream` (не `application/zip`, иначе Android
+  дописывает `.zip`), `storyboard` → `application/zip`, `audio` →
+  `audio/mpeg`, `video` → `video/mp4`; `getBlob()` сохраняет `Content-Type`
+  ответа как fallback. Пакет `@animastor/web-file` 0.1.1 (npm publish —
+  владелец; после публикации — зависимость app `^0.1.1` и
+  `npm install --package-lock-only`). Backend `GET /book/:id/download` не
+  менялся: `Content-Type: application/zip` + `Content-Disposition:
+  attachment; filename="<id>.vbook"`. Android для паритета использует SAF
+  `CreateDocument("application/vnd.animastor.vbook+zip")` — расхождения нет.
+  Выкатка — только через `prod/scripts/deploy-web.sh <commit>`.
+
 ## 2026-11-01
 
 ### Fixed

@@ -3,186 +3,9 @@
 (function () {
   'use strict';
 
-  /* ── File tree (hardcoded from docs/ directory listing) ── */
-  var TREE = {
-    'README.md': 1,
-    'CHANGELOG.md': 1,
-    'VISION.md': 1,
-    'DONT_DO.md': 1,
-    'architectural-essence.md': 1,
-    'frontend-backend-audit.md': 1,
-    'backend-dead-code-cleanup.md': 1,
-    'Animastor_Близкие_горизонты.md': 1,
-    '01-overview': {
-      'README.md': 1,
-      'ARCHITECTURE.md': 1,
-      'DATA_FLOW.md': 1,
-      'PROJECT_STRUCTURE.md': 1,
-      'SYSTEM_MAP.md': 1,
-      'SYSTEM_OVERVIEW.md': 1
-    },
-    '02-orchestration': {
-      'README.md': 1,
-      'ORCHESTRATION.md': 1,
-      'AUDIO_ORCH_ARCHITECTURAL_FIXES.md': 1,
-      'AUDIO_ORCH_ARCHITECTURAL_TODO.md': 1,
-      'AUDIO_VIDEO_SYNC.md': 1,
-      'ORCHESTRATION_AUDIT_2026-07-27.md': 1,
-      'ORCHESTRATION_FOLLOWUP_REVIEW_2026-07-27.md': 1,
-      'ORCHESTRATION_STABILIZATION_RECOMMENDATIONS.md': 1,
-      'ORCHESTRATION_TODO.md': 1,
-      'VIDEO_ORCHESTRATION.md': 1
-    },
-    '03-audit': {
-      'README.md': 1,
-      'ARCHITECTURAL_AUDIT.md': 1,
-      'ARCHITECTURAL_AUDIT_TODO.md': 1,
-      'ARCHITECTURAL_DEBT.md': 1,
-      'AUDIO_8_9_RACE_CONDITION.md': 1,
-      'CATHEDRAL.md': 1,
-      'CONFLICTING_SUBSYSTEMS.md': 1,
-      'CONTEXT_POISONING_RULES_EXAMPLES.md': 1,
-      'CROSS_PROMPT_CONSISTENCY.md': 1,
-      'DELETE_LIFECYCLE_AUDIT.md': 1,
-      'DEPENDENCY_ANALYSIS.md': 1,
-      'DOCUMENTATION_AUDIT.md': 1,
-      'PLAYER_AUDIO_MASTER_TIMELINE.md': 1,
-      'PLAYER_AUDIO_MASTER_TIMELINE_TODO.md': 1,
-      'PLAYER_AUDIT.md': 1
-    },
-    '04-planning': {
-      'README.md': 1,
-      'EXPERIMENTAL_BETA_RECONNAISSANCE_AUDIT.md': 1,
-      'EXPERIMENTAL_BETA_REDTEAM_AUDIT.md': 1,
-      'EXPERIMENTAL_BETA_VERSION.md': 1,
-      'GOLDEN_BOOK_EVOLUTION.md': 1,
-      'NEAR_HORIZONS_GAP_ANALYSIS.md': 1,
-      'ROADMAP_6M.md': 1,
-      'RunPod_Integration_GPU_Hub.md': 1,
-      'TXT_IMPORT_STRUCTURE_V2.md': 1,
-      'WORKFLOW_ROADMAP.md': 1
-    },
-    '05-frontend': {
-      'README.md': 1,
-      'EDITOR_ENTITY_CRUD.md': 1,
-      'PLAYER_SEEK_ENGINEERING.md': 1,
-      'PLAYER_STATE_MACHINE_ANDROID_WEB_PARITY_AUDIT.md': 1,
-      'PLAYER_STATE_MACHINE_AUDIT_T6.md': 1,
-      'PLAYER_STATE_MACHINE_DESIGN.md': 1,
-      'PLAYER_STATE_MACHINE_T4_MANUAL_REGRESSION.md': 1,
-      'PLAYER_STATE.md': 1,
-      'PROGRESS_HANDOFF.md': 1,
-      'SCENE_LENGTH_REFACTOR.md': 1,
-      'TASK_ARCHITECTURE.md': 1,
-      'VIDEO_LOADING_RESEARCH.md': 1
-    },
-    '06-workflows': {
-      'README.md': 1,
-      'CONNECTOR_ARCHITECTURE.md': 1,
-      'CONNECTORS.md': 1,
-      'SCENE_PIPELINE.md': 1,
-      'UNIT_SPLIT_POST_STEP.md': 1,
-      'WORKFLOW_ARCHITECTURE.md': 1,
-      'WORKFLOW_ASSISTANT_VISION.md': 1,
-      'WORKFLOWS.md': 1
-    },
-    '07-agents-and-generators': {
-      'README.md': 1,
-      'AGENT_PROMPT_PROFILES.md': 1,
-      'AGENTS.md': 1,
-      'AI_PROFILE_AUTO_SELECTION.md': 1,
-      'COREFERENCE_ARCHITECTURE_REVIEW.md': 1,
-      'COREFERENCE_RESOLUTION.md': 1,
-      'COREFERENCE_TODO.md': 1,
-      'DIALOGUE_TTS_PIPELINE.md': 1,
-      'GENERATORS.md': 1,
-      'IMAGINATION_UNIT.md': 1,
-      'IMAGINATION_UNIT_VERIFICATION.md': 1,
-      'IU_MODAL_REFACTORING.md': 1,
-      'LANGUAGE_ARCHITECTURE.md': 1,
-      'SYSTEM_PROMPT_RULES_MIGRATION.md': 1,
-      'VBOOK_GENERATION_COVERAGE_TODO.md': 1
-    },
-    '08-mobile-web-migration': {
-      'README.md': 1,
-      'TODO.md': 1,
-      '01-MIGRATION-STRATEGY.md': 1,
-      '02-DESIGN-PRESERVATION-PRINCIPLES.md': 1,
-      '03-MOBILE-WEB-ARCHITECTURE.md': 1,
-      '04-MAPPING-TABLES.md': 1,
-      '05-SCREEN-IMPLEMENTATION-ORDER.md': 1,
-      '06-RISKS-AND-ALTERNATIVES.md': 1,
-      '07-MOBILE-WEB-TESTER.md': 1
-    },
-    '09-desktop-migration': {
-      'README.md': 1,
-      '01-MIGRATION-PLAN.md': 1,
-      '02-PROGRESS.md': 1
-    },
-    'architecture': {
-      'README.md': 1,
-      'ACCOUNT_WORKSPACE_CONCEPT.md': 1,
-      'ACCOUNT_WORKSPACE_RECONNAISSANCE.md': 1,
-      'ADMIN_SYSTEM_AI_RED_TEAM_AUDIT.md': 1,
-      'ANDROID_WEB_PARITY.md': 1,
-      'architecture-map.md': 1,
-      'audit.md': 1,
-      'AUTH_IMPLEMENTATION.md': 1,
-      'decisions.md': 1,
-      'EXPERIMENTAL_BETA_DOCKER_DEPLOYMENT_AUDIT.md': 1,
-      'EXPERIMENTAL_BETA_DOCKER_DEPLOYMENT.md': 1,
-      'EXPERIMENTAL_BETA_E2E_SMOKE_AUDIT.md': 1,
-      'EXPERIMENTAL_BETA_IMPLEMENTATION_VERIFICATION.md': 1,
-      'EXPERIMENTAL_BETA_PERSONAL_AI_PROVIDER.md': 1,
-      'EXPERIMENTAL_BETA_PERSONAL_AI_PROVIDER_SECURITY_REVIEW.md': 1,
-      'EXPERIMENTAL_BETA_PRIVATE_WORKER_AUDIT.md': 1,
-      'EXPERIMENTAL_BETA_PRIVATE_WORKER_PHASE1_SECURITY_REVIEW.md': 1,
-      'EXPERIMENTAL_BETA_PRIVATE_WORKER_PHASE2_SECURITY_REVIEW.md': 1,
-      'EXPERIMENTAL_BETA_PRIVATE_WORKER_PHASE3_SECURITY_REVIEW.md': 1,
-      'EXPERIMENTAL_BETA_PRIVATE_WORKER_RECONNAISSANCE.md': 1,
-      'EXPERIMENTAL_BETA_READINESS_AUDIT.md': 1,
-      'EXPERIMENTAL_BETA_WORKER_SETUP.md': 1,
-      'recoverable-work-set.md': 1,
-      'redis-failure-model.md': 1,
-      'roadmap.md': 1,
-      'technical-debt.md': 1,
-      'work-list-rebuild-design.md': 1
-    },
-    '99-archive': {
-      'README.md': 1,
-      'ARCHITECTURE_REVIEW.md': 1,
-      'LLM_AUDIT_CONTEXT.md': 1,
-      'REGENERATION_SYSTEM_TODO.md': 1,
-      'TODO_IMMEDIATE.md': 1,
-      'TODO_TODAY.md': 1,
-      '02-orchestration': {
-        'AUDIO_ORCHESTRATOR.md': 1,
-        'GPU_HUB_CLEANUP.md': 1,
-        'M5_COMPETING_WRITERS.md': 1,
-        'ORCHESTRATOR_ARCHITECTURE_WITH_AUDIO.md': 1,
-        'ORCHESTRATOR_FACADE_PR.md': 1,
-        'ORCHESTRATOR_LIFECYCLE.md': 1,
-        'REGENERATION_SYSTEM.md': 1,
-        'STATE_WRITERS_MAP.md': 1
-      },
-      '03-audit': {
-        'AUDIO_ORCH_INTEGRATION_TODO.md': 1,
-        'CAPACITY_AND_COMPLEXITY.md': 1,
-        'ORCHESTRATION_AUDIT_TODO.md': 1,
-        'ORCHESTRATION_CONSOLIDATION_AUDIT.md': 1,
-        'ORCHESTRATION_CONSOLIDATION_TODO.md': 1,
-        'ORCHESTRATION_FULL_AUDIT.md': 1,
-        'ORCHESTRATION_STABILIZATION_AUDIT.md': 1,
-        'ORCHESTRATION_STABILIZATION_TODO.md': 1,
-        'ORCHESTRATION_STABILIZATION_TODO_V2.md': 1,
-        'ORCHESTRATION_SYSTEM_AUDIT.md': 1
-      },
-      '04-planning': {
-        'MIGRATION_PLAN.md': 1,
-        'ORCHESTRATOR_CONVERGENCE_TODO.md': 1
-      }
-    }
-  };
+  /* ── File tree: загружается из /docs/tree.json
+     (генерируется scripts/deploy-docs.sh после rsync) ── */
+  var TREE = null;
 
   /* ── Markdown → HTML (lightweight parser) ── */
   function escapeHtml(s) {
@@ -463,19 +286,21 @@
 
     // Try to render README.md for this directory
     var readmePath = path ? path + '/README.md' : 'README.md';
+    // keys/sort — до fetchFile, чтобы в .catch (каталог без README)
+    // список строился по тем же ключам, а не падал ReferenceError
+    var keys = Object.keys(node);
+    keys.sort(function (a, b) {
+      var aDir = typeof node[a] === 'object';
+      var bDir = typeof node[b] === 'object';
+      if (aDir !== bDir) return aDir ? -1 : 1;
+      return a.localeCompare(b);
+    });
     var self = this;
     fetchFile(readmePath).then(function (text) {
       // Render README as intro
       var readmeHtml = '<div class="docs-readme">' + renderMd(text) + '</div>';
       // Build directory listing
       var listHtml = '<div class="docs-dir-list">';
-      var keys = Object.keys(node);
-      keys.sort(function (a, b) {
-        var aDir = typeof node[a] === 'object';
-        var bDir = typeof node[b] === 'object';
-        if (aDir !== bDir) return aDir ? -1 : 1;
-        return a.localeCompare(b);
-      });
       keys.forEach(function (name) {
         if (name === 'README.md') return; // already rendered
         var isD = typeof node[name] === 'object';
@@ -564,7 +389,22 @@
     }
   });
 
-  /* ── Init ── */
+  /* ── Init: сначала оглавление (tree.json), потом первый route() ── */
   window.addEventListener('hashchange', route);
-  route();
+  fetch('/docs/tree.json')
+    .then(function (r) {
+      if (!r.ok) throw new Error('HTTP ' + r.status);
+      return r.json();
+    })
+    .then(function (json) {
+      if (!json || typeof json !== 'object') throw new Error('tree.json: не объект');
+      TREE = json;
+      route();
+    })
+    .catch(function (err) {
+      if (window.console && console.error) console.error('tree.json:', err);
+      contentEl.innerHTML =
+        '<p>Не удалось загрузить оглавление (tree.json). Обновите страницу; ' +
+        'если не помогло — сообщите администратору.</p>';
+    });
 })();

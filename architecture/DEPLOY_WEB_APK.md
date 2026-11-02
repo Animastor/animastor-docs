@@ -107,24 +107,34 @@ mv -f /home/animastor/data/downloads/.animastor-android-latest.apk.rollback \
    `git status --porcelain` пуст, ветка `main`, `HEAD = origin/main`;
    контейнер `animastor-proxy` запущен. Печатается коммит.
 2. `--dry-run`: печатается
-   `rsync -ain --delete --exclude .git --exclude history src/animastor-docs/
-   www/docs/` и его вывод, разбитый на **список изменений** и отдельно
-   **список удалений**; ничего не меняется.
+   `rsync -ain --delete --exclude .git --exclude tree.json
+   src/animastor-docs/ www/docs/` и его вывод, разбитый на **список
+   изменений** и отдельно **список удалений**; плюс печатается число
+   файлов, которые войдут в `tree.json` (генерация в dry-run не
+   выполняется). Ничего не меняется.
    Важно: `rsync -a -n` без `-v`/`-i` не печатает НИЧЕГО даже при
    различающихся файлах и «pending deletions» — пустой dry-run не
    означает «различий нет».
 3. Без флага: бэкап `cp -a www/docs backups/www-docs-pre-<commit7>-<UTC>/`,
-   затем `rsync -a --delete --exclude .git --exclude history
+   затем `rsync -a --delete --exclude .git --exclude tree.json
    /home/animastor/src/animastor-docs/ /home/animastor/www/docs/`.
-   Исключения: `.git` (внутренности клона), `history/` (отчёты
-   реорганизации — зеркало по спецификации «копия репо без `.git` и
-   `history`», `INVENTORY_REPORT_PHASE2A.md`; в зеркале их никогда не
-   было, docs-browser их не индексирует).
-4. Проверки после выкладки: `diff -rq -x .git -x history src www/docs`
-   пуст; `sha256 CHANGELOG.md` в контейнере `animastor-proxy` = хосту;
-   `https://animastor.org/docs/` и `https://animastor.org/docs/CHANGELOG.md`
-   → 200.
-5. В конце печатается команда отката; любая ошибка — стоп, после провала
+   Исключения: `.git` (внутренности клона), `tree.json` (генерируемый
+   ниже файл — без исключения `--delete` его сотрёт, а `diff` покажет
+   лишним), `history/` (отчёты реорганизации — зеркало по спецификации
+   «копия репо без `.git` и `history`», `INVENTORY_REPORT_PHASE2A.md`;
+   в зеркале их никогда не было, docs-browser их не индексирует).
+4. После rsync генерируется `www/docs/tree.json` — оглавление для
+   docs-browser: все `*.md` из `src/animastor-docs` рекурсивно (без
+   `.git`, `history/` и скрытых файлов), формат прежнего TREE
+   `{"имя.md": 1, "папка": {...}}`; пустые каталоги не попадают;
+   запись атомарно (tmp + `mv`), команда `python3`.
+5. Проверки после выкладки: `diff -rq -x .git -x history -x tree.json
+   src www/docs` пуст; `sha256 CHANGELOG.md` в контейнере
+   `animastor-proxy` = хосту; `https://animastor.org/docs/`,
+   `https://animastor.org/docs/CHANGELOG.md`,
+   `https://animastor.org/docs/docs-browser.js` → 200;
+   `https://animastor.org/docs/tree.json` → 200 и валидный JSON (`jq -e`).
+6. В конце печатается команда отката; любая ошибка — стоп, после провала
    проверок дальнейшие шаги не выполняются (при обрыве после бэкапа
    trap печатает откат).
 

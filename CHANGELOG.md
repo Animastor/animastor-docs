@@ -88,6 +88,26 @@ All notable changes to Animastor are documented here.
   Состояние 02.11.2026: `@animastor/web-file` 0.1.1 опубликован,
   web `c9bde25` выкачен (app.animastor.org).
 
+- **docs-browser на `animastor.org/docs/` висел на «Loading...».**
+  `index.html` ссылался на ассеты браузера от корня
+  (`/docs-browser.css`, `/docs-browser.js` → 404, `Content-Type:
+  text/html`), поэтому JS вообще не загружался. Пути исправлены на
+  `/docs/docs-browser.css` и `/docs/docs-browser.js` (а также
+  `/styles.css`, `/site.js`, `/logo.png`, favicon — остаются из site,
+  они 200). Захардкоженное оглавление `TREE` в `docs-browser.js`
+  заменено на `fetch('/docs/tree.json')` до первого `route()`: при ошибке
+  загрузки в `#docs-content` выводится «Не удалось загрузить
+  оглавление» вместо вечного Loading; в `renderDir` объявление `keys`
+  перенесено выше `fetchFile` — в `.catch` (каталог без `README.md`)
+  больше нет ReferenceError. `tree.json` генерируется
+  `prod/scripts/deploy-docs.sh` после rsync (только `*.md`, без `.git`
+  и `history/`, запись через tmp+mv; в rsync и `diff -rq` исключён как
+  генерируемый файл). Проверки скрипта дополнены: `/docs/tree.json` →
+  200 и валидный JSON (jq), `/docs/docs-browser.js` → 200.
+  `Content-Type` в `prod/nginx/default.conf` уже корректный
+  (`application/javascript`, `text/css`) — правка nginx не
+  потребовалась.
+
 ---
 
 ## 2026-11-01

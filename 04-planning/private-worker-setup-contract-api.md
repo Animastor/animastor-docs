@@ -311,6 +311,17 @@ normalized at startup; CHECK `workers_last_seen_seconds_check`). PG
 `workers.status/last_seen/version` mirror the hub heartbeats once per
 reconcile cycle (60 s) and are set `online` by `POST /worker/verify`; the API
 status is still derived from the live heartbeat key on read.
+`revoked_at` follows the same rule (WL-2): seconds in PG (CHECK
+`workers_revoked_at_seconds_check`), milliseconds in the API.
+`share_policies.revoked_at` is unchanged.
+
+Rollback of a backend image older than WL-1/WL-2: the old code writes ms,
+so `touchLastSeen` (verify) fails silently and a revoke fails with the CHECK.
+Before the rollback: `ALTER TABLE workers DROP CONSTRAINT IF EXISTS
+workers_last_seen_seconds_check, DROP CONSTRAINT IF EXISTS
+workers_revoked_at_seconds_check`. Converting back to ms is optional: old
+readers pass seconds to the API as-is, so values show as 1970 until the next
+write. Plan: `reports/2026-11-02/gpu-e2e-fixes.md` §«Откат».
 
 Adapter (doesn't break ONLINE/OFFLINE/REVOKED):
 

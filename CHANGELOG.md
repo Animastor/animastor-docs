@@ -129,6 +129,18 @@ All notable changes to Animastor are documented here.
   (`application/javascript`, `text/css`) — правка nginx не
   потребовалась.
 
+- **docs-browser на animastor.org/docs — относительные ссылки в markdown
+  переписываются в hash-маршруты** (`docs-browser.js`): `#/<путь>`
+  относительно каталога текущего документа (нормализация `../` и `./`,
+  ведущий `docs/` отбрасывается), якорь `#section` сохраняется,
+  ссылки на каталог → `#/<каталог>`, на не-`.md` файлы → `/docs/<путь>`,
+  http(s) — без изменений, `target="_blank"`.
+- **11 битых относительных ссылок починены** (проверка без `history/`):
+  `README.md` (6 — `02-orchestration/*` и `04-planning/MIGRATION_PLAN.md`
+  переехали в `99-archive/`, пути обновлены), `08-mobile-web-migration/TODO.md`
+  (4 — лишний префикс каталога убран), `architecture/repository-split-post-split-audit.md`
+  (1 — ссылка на несуществующий `build-apk.sh` убрана, текст оставлен).
+
 ---
 
 ## 2026-11-01

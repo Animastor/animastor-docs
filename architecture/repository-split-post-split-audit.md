@@ -50,7 +50,7 @@
 | `frontends/app/public/logo.png` (line 2) | **BROKEN** — файла нет в backend-репо (и нет ни одной картинки) | `https://raw.githubusercontent.com/Animastor/animastor-web/main/frontends/app/public/logo.png` (или добавить свой logo) |
 | `https://github.com/Animastor/animastor.git` (line 95) | **STALE** — старый monorepo URL | `https://github.com/Animastor/animastor-backend.git` |
 | `cd animastor` (line 96) | **STALE** | `cd animastor-backend` |
-| `[build-apk.sh](build-apk.sh)` (line 119) | **BROKEN** — файла нет в backend (он в android) | `https://github.com/Animastor/animastor-android/blob/main/build-apk.sh` (либо удалить раздел) |
+| `[build-apk.sh]` (line 119) | **BROKEN** — файла нет в backend (он в android) | `https://github.com/Animastor/animastor-android/blob/main/build-apk.sh` (либо удалить раздел) |
 | Project Structure (lines 145–158) | **STALE** — описывает монорепо (`frontends/`, `gpu-hub/`, `worker/`, `proxy/`, `scripts/`) | описать фактическую структуру backend-репо |
 | Architecture at a Glance (72–80) | **STALE** — `frontends/app`, `frontends/android`, `gpu-hub`, `worker`, `proxy` вынесены в отдельные repo | пометить как внешние repo (`Animastor/animastor-*`) |
 | `LICENSE`, `CONTRIBUTING.md`, `SECURITY.md`, `THIRD_PARTY_NOTICES.md`, `docs/**` links | OK | — |

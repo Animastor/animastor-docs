@@ -12,7 +12,58 @@
     return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
   }
 
-  function renderMd(src) {
+  /* ── Ссылки markdown: относительные пути переписываются в hash-маршруты
+     docs-browser ('#/<путь>'), путь разрешается относительно каталога
+     ТЕКУЩЕГО документа. Внешние (http(s), mailto) и якоря — как есть. ── */
+  function isExternalHref(href) {
+    return /^(https?:)?\/\//i.test(href) || /^mailto:/i.test(href);
+  }
+
+  // '#section' → {path:'', anchor:'#section'}; 'a/b#x' → {path:'a/b', anchor:'#x'}
+  function splitHref(href) {
+    var i = href.indexOf('#');
+    return i < 0
+      ? { path: href, anchor: '' }
+      : { path: href.slice(0, i), anchor: href.slice(i) };
+  }
+
+  // '../a/./b' → 'a/b'; выход за корень (лишний '..') отбрасывается
+  function normalizeDocPath(p) {
+    var out = [];
+    p.split('/').forEach(function (seg) {
+      if (seg === '' || seg === '.') return;
+      if (seg === '..') { out.pop(); return; }
+      out.push(seg);
+    });
+    return out.join('/');
+  }
+
+  // Относительная ссылка → цель docs-browser.
+  //  - каталог (заканчивается на '/' или последний сегмент без точки)
+  //    и *.md → '#/<путь>';
+  //  - прочие файлы (картинки и т.п.) → '/docs/<путь>';
+  //  - ведущий 'docs/' (старые ссылки) отбрасывается;
+  //  - якорь '#section' сохраняется в конце.
+  function resolveDocLink(href, docPath) {
+    var h = splitHref(href);
+    if (!h.path) return href;            // только якорь — не трогаем
+    var p = h.path;
+    var fromRoot = false;               // путь от корня docs (после среза docs/)
+    if (p === 'docs') { p = ''; fromRoot = true; }
+    else if (p.indexOf('docs/') === 0) { p = p.slice(5); fromRoot = true; }
+    if (!p) return '#/' + h.anchor;      // ссылка на корень docs
+    var dir = fromRoot || !docPath
+      ? ''
+      : docPath.split('/').slice(0, -1).join('/');
+    var full = normalizeDocPath(dir ? dir + '/' + p : p);
+    if (!full) return '#/' + h.anchor;
+    var last = full.split('/').pop();
+    var isDir = p.charAt(p.length - 1) === '/' || last.indexOf('.') < 0;
+    if (isDir || /\.md$/i.test(last)) return '#/' + full + h.anchor;
+    return '/docs/' + full + h.anchor;
+  }
+
+  function renderMd(src, docPath) {
     var lines = src.split('\n');
     var html = [];
     var i = 0;
@@ -61,7 +112,7 @@
       if (m) {
         closeList();
         var level = m[1].length;
-        html.push('<h' + level + '>' + inlineMd(m[2]) + '</h' + level + '>');
+        html.push('<h' + level + '>' + inlineMd(m[2], docPath) + '</h' + level + '>');
         i++;
         continue;
       }
@@ -83,7 +134,7 @@
           inList = true;
           listType = 'ul';
         }
-        html.push('<li>' + inlineMd(m[3]) + '</li>');
+        html.push('<li>' + inlineMd(m[3], docPath) + '</li>');
         i++;
         continue;
       }
@@ -97,7 +148,7 @@
           inList = true;
           listType = 'ol';
         }
-        html.push('<li>' + inlineMd(m[2]) + '</li>');
+        html.push('<li>' + inlineMd(m[2], docPath) + '</li>');
         i++;
         continue;
       }
@@ -114,13 +165,13 @@
         if (rows.length > 0) {
           html.push('<table>');
           html.push('<thead><tr>');
-          rows[0].forEach(function (c) { html.push('<th>' + inlineMd(c) + '</th>'); });
+          rows[0].forEach(function (c) { html.push('<th>' + inlineMd(c, docPath) + '</th>'); });
           html.push('</tr></thead>');
           if (rows.length > 2) {
             html.push('<tbody>');
             for (var r = 2; r < rows.length; r++) {
               html.push('<tr>');
-              rows[r].forEach(function (c) { html.push('<td>' + inlineMd(c) + '</td>'); });
+              rows[r].forEach(function (c) { html.push('<td>' + inlineMd(c, docPath) + '</td>'); });
               html.push('</tr>');
             }
             html.push('</tbody>');
@@ -138,7 +189,7 @@
         i++;
       }
       if (para.length) {
-        html.push('<p>' + inlineMd(para.join(' ')) + '</p>');
+        html.push('<p>' + inlineMd(para.join(' '), docPath) + '</p>');
       }
     }
     closeList();
@@ -146,16 +197,26 @@
     return html.join('\n');
   }
 
-  function inlineMd(s) {
+  function inlineMd(s, docPath) {
+    // Ссылки собираются в массив и подставляются ПОСЛЕ автоссылок на
+    // http(s) — иначе regex автоссылок портил уже вставленный <a href>.
+    var links = [];
     return s
       .replace(/`([^`]+)`/g, '<code>$1</code>')
       .replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>')
       .replace(/\*([^*]+)\*/g, '<em>$1</em>')
       .replace(/~~([^~]+)~~/g, '<del>$1</del>')
-      .replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2">$1</a>')
+      .replace(/\[([^\]]+)\]\(([^)]+)\)/g, function (all, text, href) {
+        links.push(/^https?:/i.test(href)
+          ? '<a href="' + href + '" target="_blank" rel="noopener">' + text + '</a>'
+          : '<a href="' + (isExternalHref(href) ? href : resolveDocLink(href, docPath)) +
+            '">' + text + '</a>');
+        return '\u0000' + (links.length - 1) + '\u0000';
+      })
       .replace(/((https?:\/\/)[^\s<>")]+)/g, function (url) {
         return '<a href="' + url + '" target="_blank" rel="noopener">' + url + '</a>';
-      });
+      })
+      .replace(/\u0000(\d+)\u0000/g, function (all, idx) { return links[+idx]; });
   }
 
   /* ── Sidebar tree renderer ── */
@@ -298,7 +359,8 @@
     var self = this;
     fetchFile(readmePath).then(function (text) {
       // Render README as intro
-      var readmeHtml = '<div class="docs-readme">' + renderMd(text) + '</div>';
+      var readmeHtml = '<div class="docs-readme">' +
+        renderMd(text, readmePath) + '</div>';
       // Build directory listing
       var listHtml = '<div class="docs-dir-list">';
       keys.forEach(function (name) {
@@ -333,7 +395,7 @@
 
   function renderFile(path) {
     fetchFile(path).then(function (text) {
-      contentEl.innerHTML = '<div class="docs-md">' + renderMd(text) + '</div>';
+      contentEl.innerHTML = '<div class="docs-md">' + renderMd(text, path) + '</div>';
       contentEl.scrollTop = 0;
     }).catch(function () {
       contentEl.innerHTML = '<p>File not found: ' + escapeHtml(path) + '</p>';

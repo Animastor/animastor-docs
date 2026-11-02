@@ -1,7 +1,7 @@
 # Android → Mobile Web Migration — Task List
 
-Plan source: [`08-mobile-web-migration/05-SCREEN-IMPLEMENTATION-ORDER.md`](08-mobile-web-migration/05-SCREEN-IMPLEMENTATION-ORDER.md)
-Project rule: [`08-mobile-web-migration/README.md`](08-mobile-web-migration/README.md)
+Plan source: [`08-mobile-web-migration/05-SCREEN-IMPLEMENTATION-ORDER.md`](05-SCREEN-IMPLEMENTATION-ORDER.md)
+Project rule: [`08-mobile-web-migration/README.md`](README.md)
 
 Statuses: `[ ]` pending · `[~]` in_progress · `[x]` done
 
@@ -197,6 +197,6 @@ Statuses: `[ ]` pending · `[~]` in_progress · `[x]` done
 ## Progress
 
 Update statuses in brackets as work proceeds; on stage completion — brief note in
-[`08-mobile-web-migration/05-SCREEN-IMPLEMENTATION-ORDER.md`](08-mobile-web-migration/05-SCREEN-IMPLEMENTATION-ORDER.md)
+[`08-mobile-web-migration/05-SCREEN-IMPLEMENTATION-ORDER.md`](05-SCREEN-IMPLEMENTATION-ORDER.md)
 and deviation documentation in
-[`08-mobile-web-migration/06-RISKS-AND-ALTERNATIVES.md`](08-mobile-web-migration/06-RISKS-AND-ALTERNATIVES.md).
+[`08-mobile-web-migration/06-RISKS-AND-ALTERNATIVES.md`](06-RISKS-AND-ALTERNATIVES.md).

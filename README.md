@@ -23,11 +23,11 @@
 
 | Document | Description |
 |---|---|
-| [`ORCHESTRATOR_LIFECYCLE.md`](02-orchestration/ORCHESTRATOR_LIFECYCLE.md) | **Single Orchestrator:** "as-is" analysis + proposed architecture (Part 1+2). Updated with M5 progress |
-| [`REGENERATION_SYSTEM.md`](02-orchestration/REGENERATION_SYSTEM.md) | Regeneration system: diff, dirty, version-based, dependency graph |
-| [`ORCHESTRATOR_FACADE_PR.md`](02-orchestration/ORCHESTRATOR_FACADE_PR.md) | PR description for `feat/orchestrator-facade` branch: what, why, releases A/B/C |
-| [`M5_COMPETING_WRITERS.md`](02-orchestration/M5_COMPETING_WRITERS.md) | **M5 completed.** 5 steps to unify all writers under the Orchestrator facade |
-| [`STATE_WRITERS_MAP.md`](02-orchestration/STATE_WRITERS_MAP.md) | Map of all locations writing scene/asset state (P1-P8, L1-L7, D1-D3) |
+| [`ORCHESTRATOR_LIFECYCLE.md`](99-archive/02-orchestration/ORCHESTRATOR_LIFECYCLE.md) | **Single Orchestrator:** "as-is" analysis + proposed architecture (Part 1+2). Updated with M5 progress |
+| [`REGENERATION_SYSTEM.md`](99-archive/02-orchestration/REGENERATION_SYSTEM.md) | Regeneration system: diff, dirty, version-based, dependency graph |
+| [`ORCHESTRATOR_FACADE_PR.md`](99-archive/02-orchestration/ORCHESTRATOR_FACADE_PR.md) | PR description for `feat/orchestrator-facade` branch: what, why, releases A/B/C |
+| [`M5_COMPETING_WRITERS.md`](99-archive/02-orchestration/M5_COMPETING_WRITERS.md) | **M5 completed.** 5 steps to unify all writers under the Orchestrator facade |
+| [`STATE_WRITERS_MAP.md`](99-archive/02-orchestration/STATE_WRITERS_MAP.md) | Map of all locations writing scene/asset state (P1-P8, L1-L7, D1-D3) |
 
 ---
 
@@ -51,7 +51,7 @@
 
 | Document | Description |
 |---|---|
-| [`MIGRATION_PLAN.md`](04-planning/MIGRATION_PLAN.md) | Migration plan to unified Orchestrator: 12 steps, 4 releases (A/B/C/D) |
+| [`MIGRATION_PLAN.md`](99-archive/04-planning/MIGRATION_PLAN.md) | Migration plan to unified Orchestrator: 12 steps, 4 releases (A/B/C/D) |
 | [`ROADMAP_6M.md`](04-planning/ROADMAP_6M.md) | **NEW.** Half-year roadmap: week → month → 3 months → long-term |
 | [`WORKFLOW_ROADMAP.md`](04-planning/WORKFLOW_ROADMAP.md) | Workflow Manager roadmap: stages 1-5 (backend, frontend, parameters, dev mode, AI) |
 | [`GOLDEN_BOOK_EVOLUTION.md`](04-planning/GOLDEN_BOOK_EVOLUTION.md) | **"Evolutionary Churning" concept:** Raw/Golden Books, Quality Delta, evolution cycle + honest critique (future vision) |

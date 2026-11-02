@@ -23,7 +23,9 @@ All notable changes to Animastor are documented here.
   что уже установленная нода (TIR) получит его при следующем doctor/boot.
   Описание: `04-planning/INSTALLER_ARCHITECTURE.md` §7.8. animastor-worker
   `22ebe8e`, backend `7df8d81`. Релиз хаба (тег v0.2.8 = бандл 2.2.2 +
-  установщик 0.2.7) делается отдельной выкаткой.
+  установщик 0.2.7) делается отдельной выкаткой. Repin `artifacts.lock.json`
+  сделан: gpu-hub `b9d5b03` (worker `cd7386d`, backend `002d61f`), образ
+  собирается `workflow_dispatch image_tag=v0.2.8` отдельной задачей.
 
 - **Установщик 0.2.6 — замены версий в overlay зависимостей нод; правило
   «одна GPU-нода — один профиль»**. E2E 02.11 (TIR, `audio/qwen-tts`): overlay
@@ -87,8 +89,10 @@ All notable changes to Animastor are documented here.
   - **Отмена чистит сцену.** `cancel-generation` и
     cancel-worker/layer-config удаляют `audio-orch`/`video-orch` (кроме
     DONE) и dispatch-receipts отменённых job'ов.
-  - **`workers.last_seen` в секундах** (миграция WL-1 мс-значений + CHECK),
-    API по-прежнему отдаёт мс. `verify` ставит `online`, reconcile раз в
+  - **`workers.last_seen` и `workers.revoked_at` в секундах** (миграции
+    WL-1/WL-2 мс-значений + CHECK; backend `d3f35cd`, `c6f631a`), API
+    по-прежнему отдаёт мс. Перед откатом backend на образ без WL-1/WL-2
+    нужно снять оба CHECK (`private-worker-setup-contract-api.md`). `verify` ставит `online`, reconcile раз в
     60 с переносит heartbeat'ы хаба в PG `status/last_seen/version`.
     `04-planning/private-worker-setup-contract-api.md`.
   - Найдено и не менялось: ошибка воркера внутри активной команды остаётся

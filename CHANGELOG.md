@@ -4,6 +4,57 @@ All notable changes to Animastor are documented here.
 
 ---
 
+## 2026-11-02
+
+### Fixed
+
+- **Установщик 0.2.5 — E2E 02.11, нода типа A (TIR, ComfyUI платформы от root,
+  pid 370, `/usr/bin/python3`; переживает рестарт только `/home`)**. 0.2.4
+  поставил зависимости qwen3-tts в `/usr/bin/python3`, завершился ✗ «restart is
+  off» с fix `~/.local/bin/animastor doctor --restart-platform-comfy`, но
+  `animastor` остался 0.2.3 / бандл 2.2.0 (выход до шага «install management
+  tools»); doctor 0.2.3 молча проглотил флаг и снова советовал `animastor
+  doctor` — цикл. Описание и ADR: `04-planning/INSTALLER_ARCHITECTURE.md` §7.6,
+  boot-сценарий — `04-planning/INSTALLER_BOOT_STARTUP.md`. backend `6a11796`
+  (merge `1125a03`).
+  - **Инструменты и бандл — до любого ✗**: `animastor` (персистентная копия
+    установщика, shim, ссылка в `~/.local/bin`) и установленный бандл воркера
+    приводятся к версии текущего установщика первым шагом install/doctor (не
+    при `--no-tools`/`--dry-run`/несовпадении владельца). Не удалось — в RESULT
+    строка ✗ «Management tools»/«Worker bundle» с версиями. Тест: каждая
+    напечатанная fix-команда разбирается CLI той же версии.
+  - **CLI**: неизвестный флаг, флаг без значения, значение у булева флага,
+    лишний аргумент → ошибка, exit 2, до каких-либо действий; `--key=value`
+    поддержан; неизвестная команда — как раньше (usage, exit 1).
+  - **Зависимости кастом-нод переживают рестарт ноды**: overlay-venv
+    `~/animastor/pydeps/py<X.Y>` (`--without-pip --system-site-packages`, pip
+    платформы ставит только недостающее, torch закреплён) + сгенерированная
+    нода `custom_nodes/animastor-pydeps/prestartup_script.py`, которую ComfyUI
+    исполняет до импорта нод. Root-pip писал в
+    `/usr/local/lib/python3.10/dist-packages` (схема `posix_local`, проверено
+    на Ubuntu 22.04 / Python 3.10.12 сервера, не на самой ноде). Без
+    prestartup-поддержки / без venv — прежнее поведение 0.2.4 с
+    предупреждением. Overlay и нода — owned, удаляются `uninstall`.
+  - **`--restart-platform-comfy`**: снимок `/proc/<pid>` (argv, cwd, environ;
+    нечитаемо или EPERM — ничего не останавливается), SIGTERM ровно этому pid,
+    30 с на подъём самой платформой, иначе запуск той же командной строки в
+    том же cwd с тем же окружением (detached, лог
+    `~/animastor/logs/comfyui-restart.log`), ожидание `/system_stats` по
+    исходному `--baseurl` и классов в `/object_info`. Перезапуск решается по
+    факту отсутствия классов (флаг перезапускает и без новой установки).
+    Согласие: флаг > записанный ответ > boot (да) > интерактивный вопрос (по
+    умолчанию да); голый `--yes` согласием не является.
+  - **Причина «node classes missing»** в doctor: нет пакетов / IMPORT FAILED
+    из лога ComfyUI (`/internal/logs`, stdout процесса, лог перезапуска) /
+    нужен рестарт — и своя fix-команда; голого `animastor doctor` для этой
+    проверки больше нет.
+  - Тесты (`packages/animastor-installer`, mocha по файлам): 438 passing,
+    0 failing (база 414; +23 `installer-v025.test.js`, +1 X6b); script-тесты
+    без изменений относительно `origin/main` (cpu 41/4, resume 11/2 — те же
+    известные падения; cli, engine, security, uninstall — зелёные).
+
+---
+
 ## 2026-11-01
 
 ### Fixed

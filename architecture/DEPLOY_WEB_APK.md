@@ -24,8 +24,16 @@
 - Режим `--dry-run` прогоняет все проверки без выкладки. В `deploy-apk.sh`
   dry-run накапливает ошибки всех проверок (а не падает на первой) и
   возвращает ненулевой код, если хотя бы одна не пройдена; `git pull` в
-  `www/site` при этом не выполняется (это уже выкладка) — только `fetch`
-  и сравнение `HEAD` с `origin/main`.
+  `www/site` при этом не выполняется (это уже выкладка) — только `fetch`.
+- Отставший `www/site` в dry-run — **не ошибка** (animastor-deploy `4d2e917`):
+  если `HEAD` опережается `origin/main` fast-forward'ом, печатается
+  `➡️ www/site: будет pull --ff-only: <HEAD> → <origin/main>`, а `version`
+  в `version.json` сверяется по `origin/main` (`git show
+  origin/main:downloads/version.json`), а не по рабочему дереву — раньше это
+  давало два FAIL и exit 1 после коммита `version.json` в `animastor-site`,
+  хотя выкладке расхождение не мешает. `fail` остаётся, если расхождение не
+  fast-forward или в `origin/main` нет `downloads/version.json`; проверка
+  `versionCode нового APK > текущего в data/downloads` работает как раньше.
 
 ## deploy-web.sh <commit>
 

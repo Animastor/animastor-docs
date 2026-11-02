@@ -64,6 +64,21 @@ All notable changes to Animastor are documented here.
   пустой вывод ≠ отсутствие различий. Регламент:
   `architecture/DEPLOY_WEB_APK.md` § deploy-docs.sh.
 
+### Changed
+
+- **`deploy-apk.sh --dry-run` больше не падает на устаревшем `www/site`**
+  (animastor-deploy `4d2e917`). После коммита `version.json` в
+  `animastor-site` (до `git -C www/site pull --ff-only`) dry-run выдавал два
+  FAIL — «HEAD != origin/main» и «version.json 0.2.3 != 0.2.4» — и exit 1,
+  хотя выкладке это не мешает: `pull` в dry-run всё равно не выполняется.
+  Теперь dry-run печатает `➡️ www/site: будет pull --ff-only: <HEAD> →
+  <origin/main>` и сверяет `version` с `origin/main`, а не с рабочим
+  деревом; `fail` остаётся только для расхождения, которое не fast-forward,
+  и для отсутствия `downloads/version.json` в `origin/main`. Проверено:
+  dry-run с `www/site` = `origin/main` и с отстающим на один коммит
+  (`87d4ce6 → 644998c`) — обе ветки печатают корректно; ненулевой код даёт
+  только защита «versionCode не больше текущего» (0.2.4 уже на сайте).
+
 ### Fixed
 
 - **GPU-цепочка: публикация аудио, recovery, audio-orch, отмена, `workers`**

@@ -899,7 +899,9 @@ ComfyUI runs it makes the package importable.
   install is there; the torch family is pinned by the constraints file (as in
   0.2.4); a package that pip upgrades (e.g. numpy for a node) wins for the
   whole ComfyUI — the same risk 0.2.4 had with an in-place upgrade, now
-  removable by deleting the overlay.
+  removable by deleting the overlay. Since 0.2.6 every such replacement is
+  reported and recorded, and one that touches another profile needs consent
+  (§7.7).
 - Python upgrade of the image: the overlay is per X.Y (`py3.10`); another X.Y
   finds no overlay → the gate installs into a new one (one restart).
 - ComfyUI without prestartup support / no `venv` module: fallback to (a) with a
@@ -937,6 +939,87 @@ EPERM / unreadable environ → nothing stopped; non-module import error → not
 restarted), V6 causes and fixes, V7 owned paths. `installer-boot-v024.test.js`
 X6 now asserts the relaunch (argv/cwd/environ, `--baseurl` kept), X6b a
 relaunched process that exits.
+
+### 7.7 Version replacements of the node-deps overlay; one GPU node — one profile (installer 0.2.6)
+
+Live E2E 2026-11-02 (TIR, `audio/qwen-tts`): the overlay of §7.6
+(`~/animastor/pydeps`, first in `sys.path` of the WHOLE ComfyUI via the
+prestartup node) replaced platform versions, not only added missing packages —
+qwen-tts pins `transformers==4.57.3`:
+
+| package | platform | overlay |
+|---|---|---|
+| transformers | 5.0.0 | 4.57.3 |
+| huggingface_hub | 1.3.5 | 0.36.2 |
+| cryptography | 3.4.8 | 50.0.2 |
+
+These versions apply to ComfyUI itself and to every other custom node. For one
+audio node this is correct (the node works, nothing else is installed); 0.2.5
+did it silently.
+
+**Detection** (`engine/overrides.js`, `cli.overridesStep`), on every
+install/doctor/boot run of type A once the overlay exists:
+
+- the platform Python of the running `main.py` runs a script with `-I`
+  (overlay NOT on `sys.path`): `importlib.metadata` lists the overlay
+  site-packages and the platform; a package present in both with different
+  versions is a **replacement** (an overlay-only package is an addition, not
+  reported);
+- attribution: for every required custom node (of all profiles on this
+  ComfyUI) the requirement closure is built — `requirements.txt`, then
+  `Requires-Dist` of the installed distributions as ComfyUI sees them (overlay
+  first; markers and extras evaluated). A node whose specifiers on the package
+  exclude the platform version **forced** the replacement → "needed by" (so
+  transitive ones — huggingface_hub via the overlay transformers — are
+  attributed too); nobody forced it → every node that uses it;
+- log line per replacement; RESULT line
+  `[i] <pkg> platform X → overlay Y (needed by <node>)`, a major version up or
+  down as `!` with "major version UP/DOWN (5 → 4): ComfyUI and every other
+  custom node import this version". Both are information, not failures;
+- install-state: `installer_options.nodeDeps = { target, overlay, python,
+  overrides: [{ package, platform, overlay, major, needed_by, profiles }],
+  accepted: [...] }`; `doctor` recomputes and shows the list on every run. The
+  engine keeps `installer_options.nodeDeps` when it rewrites
+  `installer_options` (0.2.5 dropped it after the engine step).
+
+**Rule: one GPU node — one profile.** The overlay is shared by everything in
+one ComfyUI; a node pins what its profile was tested with. A second profile on
+the same ComfyUI is allowed only while the replacements do not touch it.
+"Other profiles" = the profiles recorded in install-state (`profiles`, plus the
+profiles of recorded overrides) that this run does not install, and the
+profiles being installed. A **conflict** is:
+
+- a replaced package used by a node of another profile that did not force the
+  replacement (its range and whether the overlay version is inside it are
+  shown); a node shared by both profiles is not a conflict;
+- with more than one profile: a ComfyUI core requirement
+  (`<ComfyUI>/requirements.txt`) whose range excludes the overlay version.
+
+| run | conflict not recorded as accepted |
+|---|---|
+| interactive | question listing the conflicts, **default No**; yes → recorded in `nodeDeps.accepted` (`<pkg>@<overlay version>:<profile>`), not asked again |
+| `--accept-node-deps-overrides` | accepted and recorded |
+| `boot`, plain `--yes`, answer No | FAILED: cause + "One GPU node — one profile"; fix: install the profile on a separate GPU node, or `animastor doctor --accept-node-deps-overrides` (`install --profile … --accept-node-deps-overrides` for an install) |
+
+When this run changed the overlay and more than one profile is present, the
+overlay venv is copied first (`cp -a py<X.Y> py<X.Y>.pre-install`); a refused
+replacement restores it (the profile whose deps needed it then reports its
+deps missing — FAILED either way); accepted or no conflict → the copy is
+removed. When the replacements were already in the overlay (a profile
+installed later next to them), nothing is removed: the run fails and names
+the cause.
+
+Not covered: the type B venv of the installer's own ComfyUI and the 0.2.4
+fallback into the platform Python itself (no overlay to compare with).
+
+Tests: `tests/installer-v026.test.js` — O1 real Python (hand-made wheels in a
+"platform" venv and an overlay dir; direct + transitive attribution, other
+profile, core range, single profile without conflicts), O2 single profile
+(log, record, RESULT marks), O3 boot / `--yes` / flag / interactive yes-no,
+snapshot restore, no conflict when the other profile does not use the package,
+core range, O4 profile installed later, other profiles from install-state,
+O5 major change, CLI flag, the engine keeps the record (real
+`runInstallation`), a failed comparison is a warning.
 
 ### Hub Artifact Serving (`gpu-hub/gpu-hub.js`)
 

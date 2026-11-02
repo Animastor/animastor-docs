@@ -8,6 +8,27 @@ All notable changes to Animastor are documented here.
 
 ### Added
 
+- **Установщик 0.2.6 — замены версий в overlay зависимостей нод; правило
+  «одна GPU-нода — один профиль»**. E2E 02.11 (TIR, `audio/qwen-tts`): overlay
+  `~/animastor/pydeps` (первый в `sys.path` всего ComfyUI) молча заменил версии
+  платформы — transformers 5.0.0→4.57.3, huggingface_hub 1.3.5→0.36.2,
+  cryptography 3.4.8→50.0.2 (qwen-tts пинит `transformers==4.57.3`).
+  Теперь после установки зависимостей overlay сравнивается с Python платформы
+  (`python -I`, `importlib.metadata`); каждая замена — в лог и в RESULT строкой
+  `[i] <pkg> platform X → overlay Y (needed by <node>)`, смена major — `!`;
+  список — в install-state `installer_options.nodeDeps.overrides`, doctor
+  показывает его при каждом запуске (engine больше не теряет
+  `installer_options.nodeDeps`). Если на этой ComfyUI установлен или
+  устанавливается другой профиль и замена затрагивает пакет его ноды (или,
+  при нескольких профилях, пакет ядра ComfyUI с несовместимым диапазоном) —
+  нужно согласие: вопрос (по умолчанию «нет») или
+  `--accept-node-deps-overrides`, ответ записывается
+  (`nodeDeps.accepted`); `boot` и `--yes` согласия не дают — FAILED с причиной,
+  overlay восстанавливается из копии, снятой до pip. Для одной аудио-ноды
+  поведение не меняется. Описание и правило:
+  `04-planning/INSTALLER_ARCHITECTURE.md` §7.7. backend `b367432`. Релиз хаба —
+  отдельным тегом (v0.2.8).
+
 - **Выкладка зеркала документации — `prod/scripts/deploy-docs.sh
   [--dry-run]`** (animastor-deploy `944cf51`). Зеркало `www/docs`
   (`animastor.org/docs`, bind-mount `:ro`) обновляется только этим

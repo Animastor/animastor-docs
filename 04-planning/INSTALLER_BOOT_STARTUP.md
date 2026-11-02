@@ -55,16 +55,23 @@ export PATH="$HOME/.local/bin:$PATH"; ~/.local/bin/animastor boot
 1. Ждёт платформенный ComfyUI (как в 0.2.3): процесс `main.py` И ответ
    `GET /system_stats`, порт и префикс — из cmdline процесса на каждом шаге,
    прогресс в лог раз в 30 с.
-2. **Зависимости кастом-нод.** Для каждой обязательной ноды профиля
+2. **Зависимости кастом-нод** (0.2.5). Для каждой обязательной ноды профиля
    (`qwen3-tts` и т. п.) проверяет `requirements.txt` в Python **того**
-   процесса `main.py` (интерпретатор — из `/proc/<pid>`). Пакеты пропадают
-   при рестарте ноды вместе с образом — не удовлетворены → `pip install -r`
-   в этот Python (torch платформы закреплён constraint'ом, не заменяется).
-3. **Перезапуск платформенного ComfyUI** — только если он разрешён (в `boot`
-   на типе A — по умолчанию да): останавливается ровно тот `main.py`, который
-   проверялся (точный pid из `/proc`), и `doctor` ждёт, пока платформа
-   поднимет новый: другой pid + `/system_stats` + классы нод в `/object_info`.
-   В логе: `the platform started ComfyUI again: pid 900 → 901 at … node classes present`.
+   процесса `main.py` (интерпретатор — из `/proc/<pid>`) с учётом overlay.
+   Недостающее ставится в overlay-venv `~/animastor/pydeps/py<X.Y>` (в
+   `/home`, переживает рестарт ноды; torch платформы не копируется и не
+   заменяется), а нода `custom_nodes/animastor-pydeps/prestartup_script.py`
+   добавляет его в `sys.path` ComfyUI до импорта нод. После рестарта ноды
+   платформа поднимает ComfyUI уже с классами — без pip и без перезапуска.
+   ComfyUI без prestartup-скриптов — по-старому (pip в Python платформы,
+   при каждом рестарте ноды заново).
+3. **Перезапуск платформенного ComfyUI** — только если в работающем ComfyUI
+   нет классов и перезапуск разрешён (в `boot` на типе A — по умолчанию да):
+   снимок `/proc/<pid>` (argv, cwd, окружение), SIGTERM ровно этому pid;
+   если платформа за 30 с не подняла ComfyUI сама — установщик запускает ту
+   же командную строку в том же cwd с тем же окружением (лог
+   `~/animastor/logs/comfyui-restart.log`) и ждёт `/system_stats` по
+   исходному `--baseurl` + классы нод в `/object_info`.
 4. Пересчитывает `COMFY_URL` / `COMFY_PORT` / `NOTEBOOK_PATH`, запускает
    воркер и ждёт «ComfyUI ready». Если классы нод появляются не сразу
    (зависимости только что ставились или pid ComfyUI сменился) — проверка
@@ -77,16 +84,20 @@ export PATH="$HOME/.local/bin:$PATH"; ~/.local/bin/animastor boot
 | `--restart-platform-comfy` / `--no-restart-platform-comfy` | явно, на этот прогон (и записывается) |
 | `install-state.json` → `installer_options.restartPlatformComfy` | ответ, данный при первой интерактивной установке/`doctor` (вопрос задаётся один раз) |
 | `boot` на типе A без записи | да |
-| интерактивно без записи | один вопрос |
+| интерактивно без записи | один вопрос (по умолчанию да) |
+| `--yes` без записи (не boot) | нет — нужен флаг |
 
 Неудачи (код 1, воркер не запускается, причина — в логе одной строкой
 `animastor doctor: FAILED — …`):
 
 - ComfyUI не поднялся за окно: `ComfyUI is started by the platform; it did not come up in N s …`;
-- перезапуск выключен: `custom-node dependencies were installed, but the platform's ComfyUI (pid N) … was not restarted` —
-  fix: перезапустить ComfyUI из консоли платформы или `animastor doctor --restart-platform-comfy`;
-- платформа не подняла ComfyUI после остановки: `the platform did not start ComfyUI again within N s after it was stopped (old pid P) — start it from the platform console`;
-- ComfyUI поднялся, но без классов: `… but it answers, node classes missing: … after N s`;
+- перезапуск выключен: `custom-node dependencies are in place, but the platform's ComfyUI (pid N) … was not restarted` —
+  fix: перезапустить ComfyUI из консоли платформы или `animastor doctor --restart-platform-comfy`
+  (флаг перезапускает и без новой установки — fix не зацикливается);
+- остановить нельзя (`EPERM`, окружение процесса не читается) — ничего не остановлено, причина в строке;
+- перезапущенный ComfyUI упал: `the restarted ComfyUI (pid P) exited: <хвост лога>`;
+- ComfyUI поднялся, но без классов: `… but it answers, node classes missing: … after N s` + причина
+  (нет пакетов / IMPORT FAILED из лога ComfyUI / нужен рестарт);
 - `pip` не смог поставить зависимости — его хвост stderr.
 
 Самописные фоновые блоки (`( until pgrep …; pip install …; pkill …; doctor … ) & disown`)

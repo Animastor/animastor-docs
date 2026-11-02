@@ -4,8 +4,9 @@
 > **Status:** Current architecture as of HEAD (2026-08-30); install UX
 > updated 2026-10-30 — see §7.1 (installer `0.2.0`, bootstrap `1.2.0`,
 > worker bundle `2.2.0`); boot gate — §7.4 (installer `0.2.3`, 2026-10-31);
-> `animastor boot` + custom-node deps of the running ComfyUI — §7.5 (installer `0.2.4`, 2026-10-31)
-> **Installer version:** 0.2.4 (`animastor-backend: packages/animastor-installer/package.json`)
+> `animastor boot` + custom-node deps of the running ComfyUI — §7.5 (installer `0.2.4`, 2026-10-31);
+> tools before ✗, strict CLI, persistent node deps, platform ComfyUI restart — §7.6 (installer `0.2.5`, 2026-11-02)
+> **Installer version:** 0.2.5 (`animastor-backend: packages/animastor-installer/package.json`)
 >
 > This document describes the **actually implemented** architecture of Animastor
 > Installer based on a full code audit, tests, and git history.
@@ -635,6 +636,11 @@ unchanged).
 
 ### 7.5 `animastor boot` and custom-node dependencies (installer 0.2.4)
 
+> **Superseded in part by §7.6 (installer 0.2.5):** node deps of a platform
+> ComfyUI go into a persistent overlay; the restart no longer waits only for
+> the platform (it relaunches the same command line); the gate table below is
+> replaced by the one in §7.6.
+
 Live TIR boots of 2026-10-31 (type A, `bootstrap.log` on the node):
 
 - TIR starts its ComfyUI only AFTER the startup script has finished. A
@@ -723,6 +729,214 @@ option the foreign `main.py` is not signaled → FAILED; X5 classes never
 appear → FAILED; X6 platform does not restart → FAILED; X6c recycled pid not
 signaled; X7/X7b/X7c class re-check window; X8 option precedence + recorded
 answer; X9/X9b/X9c type B).
+
+### 7.6 Tools before ✗, strict CLI, persistent node deps, restart of the platform's ComfyUI (installer 0.2.5)
+
+Live E2E of 2026-11-02 (node type A: TIR, ComfyUI started by the platform as
+root, pid 370, `/usr/bin/python3`; only `/home` survives a node restart;
+`profile=audio/qwen-tts mode=existing`):
+
+1. Installer 0.2.4 installed the qwen3-tts requirements (qwen-tts, soundfile,
+   modelscope, funasr, ffmpeg-python) into `/usr/bin/python3`, then ended with
+   ✗ "platform ComfyUI imported nodes before that, restart is off", fix
+   `~/.local/bin/animastor doctor --restart-platform-comfy`.
+2. `~/.local/bin/animastor` was still 0.2.3 with worker bundle 2.2.0: the run
+   ended at the node-deps gate, BEFORE engine step 4.75 "install management
+   tools" and before the bundle update to 2.2.1.
+3. doctor 0.2.3 silently dropped the unknown flag (`parseArgs` treated any
+   unknown `--x` as a value option), restarted nothing and printed
+   "Custom Nodes ✓" + "node classes missing" with the fix `animastor doctor` —
+   a loop.
+
+**Preflight — tools and bundle before anything can stop the run**
+(`cli.preflightSelfUpdate`, called in `cmdInstall` right after the PATH block,
+before the 0.2.3 platform gate, the node-deps gate, the host gates and every
+`printResult`/`printFinal`): when the tools decision is yes (`--no-tools` and
+`--dry-run` skip it) the management tools are (re)installed exactly as engine
+step 4.75 does (persistent installer copy `<base>/installer`, the `animastor`
+shim, the `~/.local/bin` link, the PATH block), and an INSTALLED worker bundle
+(`worker.cjs` present) is brought to the version this installer ships
+(`engine.refreshInstalledWorkerBundle`: bundled copy, else the hub's
+`/worker-bundle/sha256` version; `.env` kept). A preflight that runs as the
+wrong user (ownership mismatch, sudo vs. user) writes nothing — the host gate
+then stops the run with its usual explanation. When the persistent copy is
+still another version afterwards, or the bundle update failed, the result gets
+a ✗ `Management tools` / `Worker bundle` line saying so — the fix commands are
+never silently aimed at an older `animastor`. Engine step 4.75 stays
+(idempotent; it registers the owned files); a bundle updated by the preflight
+forces the worker restart (`options.bundleRefreshedEarly`).
+
+**Strict command line** (`cli.parseArgs`): options are either boolean
+(`BOOLEAN_FLAGS`) or take a value (`VALUE_FLAGS`); `--key=value` is accepted.
+An unknown option, an option without its value, a value on a boolean option or
+a stray positional argument is an error: `animastor-installer <version>:
+unknown option --x`, exit **2**, before any side effect. An unknown command
+keeps its old behaviour (usage, exit 1). `--help` / `-h` print the usage,
+exit 0.
+
+**Every printed fix command exists in this version** — test
+`installer-v025.test.js` V2 collects the fixes of every result builder
+(`fixForCheck` for every label and every node-classes cause, the platform-gate
+result, blocked steps and remediation, end-to-end checks, every failure of the
+node-deps gate) and parses each `<animastor> <command> [--options]` with
+`parseArgs` of the same package: known command, no unknown option; the
+incident's commands (`doctor --restart-platform-comfy`,
+`doctor --yes --restart-platform-comfy`, …) must be among them.
+
+**Persistent custom-node dependencies** (`engine/pydeps.js`; ADR below):
+
+- overlay venv `~/animastor/pydeps/py<X.Y>` (next to `worker/`, `tools/`,
+  `logs/`), created with `<platform python> -m venv --without-pip
+  --system-site-packages` — no `ensurepip` / `python3.X-venv` needed;
+- `pip` of the platform runs in it (`<overlay>/bin/python -m pip install -r
+  <req> -c <torch constraints>`): already satisfied packages (torch & co.)
+  are NOT copied, only what the platform lacks lands in
+  `<overlay>/lib/pythonX.Y/site-packages`;
+- generated custom node `custom_nodes/animastor-pydeps/` with
+  `prestartup_script.py` (ComfyUI `execute_prestartup_script` runs it in
+  `main.py` BEFORE any custom node is imported) that `site.addsitedir`s the
+  overlay site-packages for the running Python X.Y and moves it to the front
+  of `sys.path` (`.pth` files honoured; a missing overlay is a no-op; never
+  raises) and an `__init__.py` with empty mappings. A foreign
+  `prestartup_script.py` in that directory is never overwritten;
+- the dependency check runs with the overlay in front (extra argv of the check
+  script) — exactly the view of a ComfyUI started after the prestartup node;
+- fallback to the 0.2.4 behaviour (pip into the platform Python, lost with a
+  restart, reinstalled by boot) with a warning when `main.py` has no
+  prestartup support or the overlay venv cannot be created;
+- the overlay base and the prestartup node are registered as owned
+  `services` components → removed by `uninstall`; the chosen target is
+  recorded in `installer_options.nodeDeps` (`overlay|system`, path, python).
+
+**Type A gate** (`cli.platformNodeDepsGate`, replaces the 0.2.4 table in §7.5):
+
+| Situation | Behaviour |
+|---|---|
+| deps satisfied (with the overlay), classes in `/object_info` | nothing |
+| deps missing; boot / `--yes` / `--restart-platform-comfy` | install into the overlay (fallback: platform Python) without a question |
+| deps missing; interactive | ONE question (install + restart, default Yes); the answer is recorded as the restart option when none was recorded |
+| deps missing; declined | ✗, fix `animastor doctor --yes --restart-platform-comfy` |
+| pip failed / still unsatisfied | ✗ with pip's error; fix names the pip error / the manual command, then `doctor --yes --restart-platform-comfy` |
+| deps in place, running ComfyUI lacks the classes, restart allowed | `restartForeignComfyUI` (below) |
+| same, restart not allowed | not signaled; ✗, fix `animastor doctor --restart-platform-comfy` (the flag is consent; the restart then happens even when nothing was installed in that run — the fix does not loop) |
+| same, the ComfyUI log shows `IMPORT FAILED` with an error that is not a missing module, no new install, no explicit flag | not restarted (a restart does not fix a syntax/CUDA error and must not repeat on every boot); ✗ with the error and its log source |
+
+**Restart of a ComfyUI the installer did not start**
+(`node-deps.restartForeignComfyUI`; the platform (TIR) does NOT bring its
+ComfyUI back after it stops, so 0.2.4's "SIGTERM and wait for the platform"
+left the node without ComfyUI):
+
+1. snapshot `/proc/<pid>`: argv (must still be a `main.py`), cwd, the full
+   `environ`; anything unreadable → nothing is stopped;
+2. `SIGTERM` to exactly that pid (`SIGKILL` after 15 s); a refused signal
+   (`EPERM`, another user) → nothing changed, ✗ with the reason;
+3. grace window (30 s): a new `main.py` appearing on its own means the
+   platform supervises ComfyUI — it is used, the installer starts nothing;
+4. otherwise the same argv (a bare `python*` resolved like
+   `pythonOfProcess`) is started in the same cwd with the same environment,
+   detached (own session), output appended to
+   `~/animastor/logs/comfyui-restart.log`;
+5. wait for `GET <url>/system_stats` where `<url>` comes from the original
+   `--listen/--port/--baseurl` (the notebook prefix is kept), then for the
+   missing classes in `/object_info`; a started process that exits is
+   reported at once with the tail of its log. The wait is the boot window
+   (`--comfy-wait-ms`), at least 180 s.
+
+**Consent** (`restartPlatformComfyDecision`, unchanged precedence):
+`--restart-platform-comfy` / `--no-restart-platform-comfy` > recorded
+`installer_options.restartPlatformComfy` > boot default (yes on type A: the
+node is unattended, a recorded "no" is respected) > interactive question
+(default Yes, recorded). A plain `--yes` (non-boot) is NOT consent to stop a
+process the installer does not own.
+
+**Cause of "node classes missing"** (`node-deps.diagnoseMissingClasses`,
+`runVerification` → `live.comfyui.missing_node_classes_cause`, the check
+detail and `summary.fixForCheck`): per required node providing a missing
+class —
+
+| Cause | Detected by | Fix (type A / type B) |
+|---|---|---|
+| `deps-missing` | requirements unsatisfied in the ComfyUI Python (+ overlay) | `doctor --yes --restart-platform-comfy` / `doctor --yes` |
+| `import-failed` | `Cannot import <dir> … : <error>` / `(IMPORT FAILED): <dir>` in the last startup of the ComfyUI log, error not a missing module | fix the error (log source named), then `doctor --restart-platform-comfy` / `reboot-comfyui` |
+| `restart-needed` | packages present, and the log shows a missing-module failure at startup — or no failure at all (process predates the node/deps) | `doctor --restart-platform-comfy` / `reboot-comfyui` |
+
+Log sources, best first: `GET <url>/internal/logs/raw` | `/internal/logs`
+(ComfyUI's in-memory log), the file behind `/proc/<pid>/fd/1|2`, the
+installer's `comfyui-restart.log`, `<root>/comfyui-installer.log`. Only the
+last startup of an appended log is parsed.
+
+#### ADR-INST-0.2.5-1: where the node dependencies of a platform ComfyUI live
+
+*Context.* As root, `pip install` into the Debian/Ubuntu system Python uses
+the `posix_local` scheme → `/usr/local/lib/python3.10/dist-packages`
+(checked on Ubuntu 22.04 / Python 3.10.12: `sysconfig.get_default_scheme()` =
+`posix_local`, `purelib` = `/usr/local/lib/python3.10/dist-packages`; the node
+image itself was not inspected — same distro family assumed). `--user` as root
+writes `/root/.local`. Both are outside `/home` and are lost with a node
+restart; every boot then needed pip + a restart of the platform's ComfyUI.
+
+*Options.*
+(a) keep 0.2.4 — reinstall on every boot + restart: minutes of pip and a
+ComfyUI restart per boot, network-dependent, a restart the platform does not
+undo;
+(b) `pip install --target ~/…/pydeps` + `PYTHONPATH`: `--target` ignores the
+installed packages and would copy torch & co. (GBs) and shadow the platform's
+build; `PYTHONPATH` only reaches a process the installer starts, not the one
+the platform starts after a restart;
+(c) **overlay venv `--system-site-packages` + prestartup custom node** —
+chosen.
+
+*Decision.* (c): the platform's pip resolves against the platform's
+packages, only missing ones are written; the prestartup script is part of
+`custom_nodes` (in `/home`) and runs inside every ComfyUI start, including the
+platform's own after a node restart. Verified in a real Python 3.10
+(test V4e): venv without ensurepip, system pip in the overlay installs only the
+missing wheel (pip itself is not copied), and the generated script run the way
+ComfyUI runs it makes the package importable.
+
+*Risks and mitigations.*
+- Shadowing: overlay packages precede the platform's. Only what pip had to
+  install is there; the torch family is pinned by the constraints file (as in
+  0.2.4); a package that pip upgrades (e.g. numpy for a node) wins for the
+  whole ComfyUI — the same risk 0.2.4 had with an in-place upgrade, now
+  removable by deleting the overlay.
+- Python upgrade of the image: the overlay is per X.Y (`py3.10`); another X.Y
+  finds no overlay → the gate installs into a new one (one restart).
+- ComfyUI without prestartup support / no `venv` module: fallback to (a) with a
+  warning.
+- Packages installed by 0.2.4 into `/usr/local` satisfy the check until the
+  next node restart; then the overlay is filled once (one restart on that
+  boot). No migration of already-installed packages.
+- Binary wheels with absolute paths are unaffected (the overlay path is
+  stable); the overlay interpreter is a symlink to the platform Python, used
+  only to run pip.
+
+#### ADR-INST-0.2.5-2: restarting a ComfyUI the installer did not start
+
+*Decision.* Snapshot `/proc` → stop exactly that pid → 30 s for the platform
+→ otherwise start the same command line/cwd/environment detached → wait for
+the API at the original `--baseurl` and for the classes. Consent: flag >
+recorded answer > boot default yes > interactive question (default Yes);
+`--yes` alone is not consent.
+
+*Risks.* The platform may start its own instance after the grace window: it
+then fails to bind the port and the installer's instance keeps serving (same
+command line). An instance started by the installer is still classified as
+the platform's (`--listen 0.0.0.0 --baseurl …`), so it is never treated as
+managed; after the next node restart the platform starts its own again.
+Nothing is stopped when the environment is unreadable or the signal is
+refused.
+
+Tests: `tests/installer-v025.test.js` — V1 strict CLI (real process: exit 2,
+nothing run), V2 every fix command parses with this version, V3 preflight
+(0.2.3 tools + bundle 2.2.0 → this version, `.env` kept; failed update
+reported; `--no-tools`/`--dry-run`; order in `cmdInstall`), V4 overlay +
+prestartup (memory world; real Python V4e), V5 restart (flag restarts with
+nothing installed; no consent → not signaled; platform restarts by itself;
+EPERM / unreadable environ → nothing stopped; non-module import error → not
+restarted), V6 causes and fixes, V7 owned paths. `installer-boot-v024.test.js`
+X6 now asserts the relaunch (argv/cwd/environ, `--baseurl` kept), X6b a
+relaunched process that exits.
 
 ### Hub Artifact Serving (`gpu-hub/gpu-hub.js`)
 

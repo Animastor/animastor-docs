@@ -1066,7 +1066,10 @@ required class:
   API-only readiness).
 
 Hub release: worker bundle 2.2.2 + installer 0.2.7 → gpu-hub tag v0.2.8
-(repin of `artifacts.lock.json`).
+(repin of `artifacts.lock.json`). Before the v0.2.8 image was built the
+bundle moved to **2.2.3** (optional `error_class` / `comfy_status` in
+`task/error`, GPU retry policy — `architecture/COMMAND_ONLY_GENERATION.md`
+§«Повтор после ошибки воркера»); v0.2.8 ships 2.2.3 + installer 0.2.7.
 
 Tests: worker `tests/node-readiness.test.cjs` (spawned worker, fake
 ComfyUI/hub: missing classes → no polling, one line, backoff; classes appear →

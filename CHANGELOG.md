@@ -4,6 +4,26 @@ All notable changes to Animastor are documented here.
 
 ---
 
+## 2026-11-03
+
+### Added
+
+- **Фронты: статус `failed` и пауза повтора GPU-задачи (паритет web +
+  Android).** По ТЗ `reports/2026-11-02/gpu-retry-policy.md` §«ТЗ фронтам».
+  Строка `failed` — классифицированная причина (ComfyUI: нет нод / нет модели /
+  отклонил задачу, воркер не ответил, не хватило видеопамяти, неизвестная
+  ошибка) + кнопка «Повторить» (новая явная команда); подпись сцены падения
+  при scope ≠ `current_scene`. Строка `retrying` остаётся активной, под ней —
+  отсчёт «Повтор N/M через mm:ss» по часам клиента и причина последней ошибки.
+  Web: `@animastor/web-generator` 0.3.0 (`b95a5e8`, аддитивно:
+  `failureText`, `formatFailureText`, `retryLine`, `formatRetryCountdown`,
+  `failedSceneCaption`, состояние `failed`), app (`8f8d06f`). Android 0.2.5
+  (versionCode 7, `642e81d`). Правила — `architecture/COMMAND_ONLY_GENERATION.md`
+  §«Отображение на фронтах»; GAP 2026-11-02 «GPU retry policy» в
+  `architecture/ANDROID_WEB_PARITY.md` → FIXED.
+
+---
+
 ## 2026-11-02
 
 ### Changed

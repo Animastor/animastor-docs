@@ -298,8 +298,37 @@ backend во время паузы снимают повтор. Пользова
 policy:{action: failed|retry_scheduled|no_command|ignored, error_class,
 error_code, error_message, attempt, retry_no?, pause_ms?, due_at?}}`.
 
-Фронты (web + Android, паритет по `ANDROID_WEB_PARITY.md`) делаются
-отдельной задачей, ТЗ — в отчёте `reports/2026-11-02/gpu-retry-policy.md`.
+### Отображение на фронтах (2026-11-03)
+
+Web (`@animastor/web-generator` 0.3.0 `taskStatus.ts` + app `GeneratePage.tsx`)
+и Android (`TaskStatusHelpers.kt` + `GenerateFragment.kt`, 0.2.5) — одной
+задачей, паритет по `ANDROID_WEB_PARITY.md` (ТЗ —
+`reports/2026-11-02/gpu-retry-policy.md` §«ТЗ фронтам»).
+
+- **Состояние строки.** Приоритет: `cancelled` > `blocked` > `interrupted` >
+  `failed` > `done` > `active`. `failed` — «остановленная» строка (как
+  blocked/interrupted): без спиннера и таймера, без автоповтора.
+- **Строка `failed`.** Основной текст — `причина — имя задачи`. Причина
+  выбирается чистым `failureText(error_class, error_code, error_message, type)`
+  → i18n-ключ + аргумент (первая строка `error_message`, «…» если строк
+  больше; фронт сообщение не разбирает):
+  `comfy_missing_node` → `task_failed_comfy_nodes`,
+  `comfy_model_missing` → `task_failed_comfy_model`,
+  `deterministic` → `task_failed_comfy_rejected`,
+  `transient` → `task_failed_transient`, `oom` → `task_failed_oom`,
+  остальное → `task_failed_unknown`. Пустой аргумент — суффикс « — …»
+  отбрасывается. Кнопка «Повторить» — новая явная команда `/regenerate` с тем
+  же типом и scope (`retryCommandFor`).
+- **Подпись сцены.** Если scope ≠ `current_scene` и есть `failed_scene` — под
+  строкой мелко `Scene N — Title` / `Cover` по уже загруженной книге (как
+  backend считает `scene_label`); сцены нет в книге → `chapter_id/scene_id`.
+- **Пауза повтора.** Строка с `retrying=true` остаётся `active` (спиннер,
+  таймер, «стоп»); под ней мелко «Повтор `retry_no`/`retry_max` через mm:ss»
+  — отсчёт до `retry_at` по часам клиента, после него «Повтор…» до следующего
+  опроса progress-panel; ниже — причина последней ошибки (тот же
+  `failureText`). Фронт при этом ничего не делает — повторяет сервер.
+- **Старый backend** без новых полей — строки как раньше (поля
+  необязательные).
 
 ## Выкатка
 

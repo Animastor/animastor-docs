@@ -97,14 +97,18 @@ index. Параметр запроса `register_for_gpu` больше ниче�
 |---|---|---|---|
 | реестр задач (Redis) + PG `generation_tasks` | `blocked` | `no_worker_available` при dispatch стадии | нет живого воркера нужного типа; `blocked_reason: no_worker:<type>`; стадия → DIRTY; задача ничего не авторизует, повтор — только новой командой (она вытесняет blocked-задачу) |
 | реестр задач + PG `generation_tasks` | `interrupted` | старт backend: все `active` / `queued` / `running` | прогон прервал перезапуск; возобновление только кнопкой (новая команда вытесняет interrupted-задачу) |
+| реестр задач + PG `generation_tasks` | `failed` | терминальная ошибка GPU-попытки (deterministic / unknown или исчерпаны повторы transient / oom), §«Повтор после ошибки воркера» | `error_class` / `error_code` / `error_message` / `failed_scene`; задача ничего не авторизует; повтор — только новой командой (вытесняет failed-задачу) |
 | реестр задач + PG `generation_tasks` | `cancelled` | cancel-worker, `PUT /layer-config` X=false, cancel-generation | команда отменена пользователем или выключением слоя |
 | PG `scene_assets` | `cancelled` | те же отмены | бывшая `pending`-строка отменённой стадии; `ready` / `placeholder` / `stale` не трогаются; reconcile и C8 её как работу не читают |
 | PG `scene_assets` | `failed` (`error: blocked:no_worker:<type>`) | `no_worker_available` | бывшая `pending`-строка заблокированной стадии |
+| PG `scene_assets` | `failed` (`error: gpu_failed:<class>:<message>`) | терминальная ошибка GPU-попытки | бывшая `pending`-строка упавшей стадии |
+| asset-state (Redis) | `failed` | любая ошибка GPU-попытки (и во время паузы повтора) | планировщик не диспатчит; повтор политики переводит FAILED → PENDING только под живой командой |
 | PG `book_generation_sessions` | `failed` (`error: interrupted: …`) | старт backend: сессии `generating` / `pending` | окно VBook прервано перезапуском, не возобновляется само |
 | asset-state (Redis) | `dirty` вместо `pending` | no_worker, Stop All, осиротевший GENERATING без команды | стадия освобождена, но в работу не поставлена |
 
-progress-panel показывает строки `blocked` и `interrupted` (поля `status`,
-`blocked`, `blocked_reason`, `interrupted`), но не считает их «в работе».
+progress-panel показывает строки `blocked`, `interrupted` и `failed` (поля
+`status`, `blocked`, `blocked_reason`, `interrupted`, `failed`, `error_*`), но
+не считает их «в работе».
 
 ## Команды и отмены
 
@@ -113,8 +117,8 @@ progress-panel показывает строки `blocked` и `interrupted` (п�
   осталось ни одного — **409** `{error:'layer_disabled', disabled_worker_types}`,
   tombstone и cancel flag при этом **не** снимаются. Принятая команда снимает
   cancel flag и tombstone (флаг без TTL следующей команде не мешает),
-  вытесняет `blocked`/`interrupted` задачи тех же типов на тех же сценах и
-  создаёт новые.
+  вытесняет `blocked`/`interrupted`/`failed` задачи тех же типов на тех же
+  сценах и создаёт новые.
 - `PUT /layer-config` с `X_enabled=false` останавливает стадию X по книге:
   задачи реестра и строки PG → cancelled; lease и копии в очереди хаба
   снимаются; GENERATING без lease → DIRTY; сцены без авторизованной стадии
@@ -177,25 +181,125 @@ progress-panel показывает строки `blocked` и `interrupted` (п�
   `dispatch-completed:*` остаются до TTL: по ним поздний callback
   распознаётся как финализированный.
 
-### Повтор после ошибки воркера: известный пробел (не менялось)
+## Повтор после ошибки воркера
 
-Разведка 02.11 11:08–11:12 (задача 6323, `sc-3708615c`): воркер 2.2.0 брал
-задачу и через ~0.1 с отвечал `POST /gpu/task/error` с причиной
-`No prompt_id`. ComfyUI без qwen-нод отклонял prompt. Backend
-классифицировал это как `transient`: `FAIL-STAGE → PENDING (re-dispatch
-queued)`, retry budget 10. Активная задача реестра (команда) по-прежнему
-авторизовала стадию, поэтому планировщик передиспатчил на следующем tick:
-6 dispatch'ей за 85 с. Затем открылся circuit breaker (`CIRCUIT_BLOCKED`
-каждые 5 с) до отмены в 11:11:23.
+> Решение владельца 02.11.2026. Реализация: animastor-backend `e88210f`
+> (merge `1900578`; `backend/src/services/gpu-error-classifier.cjs`,
+> `backend/src/services/gpu-retry-policy.cjs`), воркер 2.2.3 `262d08a`
+> (merge `6443aa2`), gpu-hub `fcba751` + repin v0.2.8 `0311abc` (merge
+> `c190ce2`). `@animastor/orchestration` не менялся. Отчёт:
+> `reports/2026-11-02/gpu-retry-policy.md`.
 
-Правило Stage 155 «повтор только новой командой» сейчас покрывает
-`no_worker_available`, но не ошибку воркера внутри команды: retry-budget и
-circuit breaker продолжают работать. В этой задаче исправлен источник
-проблемы: воркер 2.2.2 не берёт задачи без нод профиля
-(`04-planning/INSTALLER_ARCHITECTURE.md` §7.8), а ошибка ComfyUI в
-`task/error` теперь содержит причину. Политика повторов не менялась. Решение
-о том, считать ли ошибку воркера терминальной для команды, остаётся за
-владельцем.
+**Основание.** Разведка 02.11 11:08–11:12 (задача 6323, `sc-3708615c`).
+Воркер 2.2.0 брал задачу и через ~0.1 с отвечал `task/error` «No prompt_id»:
+ComfyUI без qwen-нод отклонял prompt. Backend считал ошибку `transient`
+(`FAIL-STAGE → PENDING`, retry budget 10). Активная задача реестра продолжала
+авторизовывать стадию, и за 85 с прошло 6 dispatch'ей. Остановили их circuit
+breaker и ручная отмена.
+
+**Правило.** Инвариант «только по команде» распространяется и на повторы.
+Ошибка попытки сначала классифицируется, и класс определяет, будет ли повтор:
+
+| Класс (`error_class`) | Что сюда входит | Повторы | Пауза | Потом |
+|---|---|---|---|---|
+| `deterministic` | ComfyUI отклонил prompt: HTTP 400, `node_errors`, «No prompt_id», нет класса ноды, неверный workflow, модель не найдена, несовместимый протокол задачи | 0 | — | failed |
+| `transient` | таймаут выполнения; сеть или HTTP 5xx между воркером и хабом/ComfyUI; воркер пропал (протух heartbeat, хаб `worker_timeout`) | 2 | 30 с, затем 120 с | failed |
+| `oom` | CUDA out of memory | 1 | 60 с | failed |
+| `unknown` | всё остальное (fail-closed) | 0 | — | failed |
+
+Повтор выполняется только если **в момент окончания паузы** команда ещё
+жива. Это значит: задача реестра, которой принадлежала упавшая попытка, всё
+ещё `active`, и command gate авторизует сцену×стадию (активная задача, слой
+включён, отмены нет). Отмена, выключение слоя, новая команда или рестарт
+backend во время паузы снимают повтор. Пользователь повторяет сам кнопкой,
+а `/regenerate` снимает failed как обычно: новая команда вытесняет задачу
+`failed` так же, как `blocked`/`interrupted`.
+
+**Классификатор** (`gpu-error-classifier.cjs`, чистая функция с таблицей
+правил) работает с любым воркером 2.2.0+. Порядок:
+
+1. Структурное поле воркера `error_class` (2.2.3+): `deterministic` /
+   `transient` / `oom`.
+2. `comfy_status`, HTTP-статус ComfyUI `POST /prompt`: 400 → deterministic,
+   5xx → transient.
+3. Правила по тексту `reason` для старых воркеров, причин хаба и watchdog'ов:
+   OOM → deterministic → transient.
+4. Иначе `unknown`.
+
+Выход классификатора: `error_class`, `error_code` (уточнение:
+`comfy_rejected`, `comfy_missing_node`, `comfy_model_missing`,
+`comfy_invalid_workflow`, `worker_lost`, `execution_timeout`, `network`,
+`cuda_oom`, `unknown`) и `error_message`. `error_message` — одна строка
+до 200 символов, без стектрейса.
+
+**Механика** (`gpu-retry-policy.cjs`, на стороне хоста):
+
+- Все источники ошибки попытки идут через политику: хаб `/gpu/task/error`,
+  watchdog застоя audio/video (`failWaitingScene`) и reconcile-доигрывание
+  недоставленных ошибок хаба (`animastor:error:*`). Composition root
+  оборачивает фасад `orchestrator.failStage`; вызов с явным
+  `redispatch:false` идёт напрямую.
+- Стадия всегда переводится в FAILED **без** немедленного возврата в
+  PENDING (`failStage(…, {redispatch:false})`). Планировщик FAILED не
+  диспатчит.
+- Повтор: запись `animastor:gpu-retry:pending:<book>:<ch>:<sc>:<stage>` и
+  таймер в процессе. По окончании паузы запись забирается через `DEL`
+  (выполняется ровно один раз). Затем проверяются задача и гейт, после
+  чего FAILED → PENDING и сцена добавляется в active index (через гейт).
+  Dispatch делает обычный tick.
+- Терминальный провал: задачи реестра этой стадии, нацеленные на сцену,
+  переходят в `failed` (`error_class`, `error_code`, `error_message`,
+  `failed_scene`, `attempts`). PG `generation_tasks.status=failed`
+  (`error = gpu_failed:<class>:<message>`), PG `scene_assets` pending →
+  `failed` с той же причиной. Задача `failed` ничего не авторизует.
+- Счётчик попыток ведётся на (задача реестра × сцена × стадия), ключ
+  `animastor:gpu-retry:attempts:*` (24 ч). Каждая попытка пишется в журнал
+  сцены: `GPU_ATTEMPT_FAILED` (класс, причина, решение),
+  `GPU_RETRY_SCHEDULED`, `GPU_RETRY_REQUEUED`, `GPU_RETRY_SKIPPED`
+  (причина: `task_cancelled`, `cancelled`, `layer_disabled`, `interrupted`,
+  `asset_<state>`), `GPU_FAILURE_TERMINAL`.
+- Ошибка без активной команды: стадия FAILED, повтора нет (`no_command`).
+  Поздний или чужой сигнал, который `failStage` отклонил, игнорируется.
+- Рестарт backend во время паузы: задачи становятся `interrupted`
+  (startup-resume), записи `pending` удаляются и журналируются как
+  `interrupted`. Запись чужого процесса (`boot_id`) не исполняется.
+- Retry budget и circuit breaker `@animastor/orchestration` остаются
+  внешней защитой. Half-open probe берёт только PENDING-стадии, а
+  deterministic-провал в PENDING не возвращается, поэтому probe его не
+  повторяет. Retry budget (10 на сцену×стадию) при не более чем 3
+  попытках не исчерпывается.
+- Хаб сам задачу в очередь не переставляет. Единственное исключение —
+  orphan-requeue: ремонт доставки после падения хаба между RPOPLPUSH и
+  записью running, не более 3 раз, потом `orphaned_task` → backend, класс
+  `unknown`. См. `GPU_HUB_CONTRACT.md` §13.
+- Воркер 2.2.3 распознаёт `execution_error` в history ComfyUI и сообщает о
+  нём сразу. До 2.2.3 воркер ждал таймаута результата, поэтому CUDA OOM
+  выглядел как таймаут. OOM даёт `error_class=oom`; остальные ошибки
+  выполнения идут без класса, backend считает их `unknown`.
+
+### Статус задачи и генерации (контракт API)
+
+`GET /api/v1/book/:id/progress-panel`, строка задачи, новые поля
+(аддитивно):
+
+| Поле | Значение |
+|---|---|
+| `status` | += `failed` |
+| `failed` | `true` для `failed`; такая строка видима, но не «в работе» (`any_incomplete` её не учитывает) |
+| `failed_scene` | `{chapter_id, scene_id}` сцены, на которой команда упала, или `null` |
+| `error_class` | `deterministic` \| `transient` \| `oom` \| `unknown` \| `null`: у `failed` — класс терминальной ошибки; у `active` во время паузы — класс последней ошибки |
+| `error_code` | уточнение класса (список выше) или `null` |
+| `error_message` | короткий текст без стектрейса (≤200 символов) или `null` |
+| `retrying` | `true`, пока задача `active` и ждёт паузы повтора |
+| `retry_no` / `retry_max` | номер повтора и максимум (transient — 2, oom — 1) |
+| `retry_at` | время повтора (мс epoch) или `null` |
+
+Ответ хабу на `/gpu/task/error`: `{ok, failed, reason, redispatch:false,
+policy:{action: failed|retry_scheduled|no_command|ignored, error_class,
+error_code, error_message, attempt, retry_no?, pause_ms?, due_at?}}`.
+
+Фронты (web + Android, паритет по `ANDROID_WEB_PARITY.md`) делаются
+отдельной задачей, ТЗ — в отчёте `reports/2026-11-02/gpu-retry-policy.md`.
 
 ## Выкатка
 

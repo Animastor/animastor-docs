@@ -6,6 +6,39 @@ All notable changes to Animastor are documented here.
 
 ## 2026-11-02
 
+### Changed
+
+- **Повтор GPU-задачи после ошибки воркера — по классу ошибки и только под
+  живой командой (решение владельца 02.11).** Основание: задача 6323 —
+  6 dispatch'ей за 85 с, каждый «No prompt_id» через 0.1 с
+  (`FAIL-STAGE → PENDING`, retry budget 10, остановил circuit breaker).
+  Теперь каждая ошибка попытки (хаб `/gpu/task/error`, watchdog застоя,
+  reconcile-доигрывание `animastor:error:*`) классифицируется:
+  `deterministic` (ComfyUI отклонил prompt) — без повтора; `transient`
+  (таймаут, сеть/5xx, воркер пропал) — до 2 повторов через 30 с и 120 с;
+  `oom` — 1 повтор через 60 с; `unknown` — без повтора. Повтор — только если
+  в конце паузы задача реестра `active`, слой включён и отмены нет; рестарт
+  backend во время паузы → `interrupted`, не повтор. Терминальный провал:
+  задача реестра и PG `generation_tasks` → **`failed`** (новый статус в
+  реестре), PG `scene_assets` pending → `failed`, причина сохраняется; повтор —
+  кнопкой (`/regenerate` вытесняет failed-задачу). Каждая попытка с причиной —
+  в журнале сцены (`GPU_ATTEMPT_FAILED` … `GPU_FAILURE_TERMINAL`).
+  `GET /progress-panel`: новые поля строки `failed`, `failed_scene`,
+  `error_class`, `error_code`, `error_message`, `retrying`, `retry_no`,
+  `retry_max`, `retry_at`. Протокол `task/error`: необязательные
+  `error_class` + `comfy_status` (воркер 2.2.3 шлёт, хаб v0.2.8 пересылает;
+  для 2.2.0–2.2.2 — классификация по тексту `reason`). Воркер 2.2.3 сразу
+  сообщает `execution_error` ComfyUI (раньше ждал таймаута результата, OOM
+  выглядел как таймаут). Реализация на стороне хоста:
+  `@animastor/orchestration` не менялся, публикация npm не нужна; retry budget
+  и circuit breaker пакета остаются внешней защитой. Описание:
+  `architecture/COMMAND_ONLY_GENERATION.md` §«Повтор после ошибки воркера»,
+  `architecture/GPU_HUB_CONTRACT.md` §9 п.4, §13. Фронты (web + Android,
+  паритет) — отдельной задачей, ТЗ в `reports/2026-11-02/gpu-retry-policy.md`.
+  backend `e88210f` (merge `1900578`), worker `262d08a` (merge `6443aa2`),
+  gpu-hub `fcba751` + repin `0311abc` (merge `c190ce2`: v0.2.8 = бандл 2.2.3
+  `2d919524…` + установщик 0.2.7). Прод-выкатка — отдельной задачей.
+
 ### Added
 
 - **Воркер 2.2.2 + установщик 0.2.7: воркер берёт задачи только когда в
@@ -26,6 +59,8 @@ All notable changes to Animastor are documented here.
   установщик 0.2.7) делается отдельной выкаткой. Repin `artifacts.lock.json`
   сделан: gpu-hub `b9d5b03` (worker `cd7386d`, backend `002d61f`), образ
   собирается `workflow_dispatch image_tag=v0.2.8` отдельной задачей.
+  Образ v0.2.8 до сборки дополнен бандлом **2.2.3** (поле `error_class` в
+  `task/error`, §Changed выше) — repin обновлён.
 
 - **Установщик 0.2.6 — замены версий в overlay зависимостей нод; правило
   «одна GPU-нода — один профиль»**. E2E 02.11 (TIR, `audio/qwen-tts`): overlay
@@ -111,8 +146,9 @@ All notable changes to Animastor are documented here.
     60 с переносит heartbeat'ы хаба в PG `status/last_seen/version`.
     `04-planning/private-worker-setup-contract-api.md`.
   - Найдено и не менялось: ошибка воркера внутри активной команды остаётся
-    `transient` с retry-budget/circuit breaker
-    (`COMMAND_ONLY_GENERATION.md` §«Повтор после ошибки воркера»).
+    `transient` с retry-budget/circuit breaker. Закрыто политикой повторов
+    (§Changed выше, `COMMAND_ONLY_GENERATION.md` §«Повтор после ошибки
+    воркера»).
   - Шаги владельца: публикация `@animastor/orchestration` 0.3.2 в npm, затем
     bump в `backend/package.json` и выкатка backend.
 - **Переключатели слоёв (web + Android) — один PUT на действие пользователя

@@ -422,10 +422,30 @@ Phase A (§10.2a).
    forward (5 retries × 500 ms). `200 {ok:true}` EVEN when backend delivery
    failed after retries (the result key is the recovery path).
 4. **Fail** — `POST /task/error`, Bearer, claimer-only.
-   `{job_id, build_id, dispatch_id, protocol_version, reason}`.
+   `{job_id, build_id, dispatch_id, protocol_version, reason}` + optional
+   `error_class`, `comfy_status` (below).
    Same status semantics; clears running/processing/dedup and re-stamps an
    idle heartbeat; forwards to backend (5 retries; fallback
    `animastor:error:{job_id}` TTL 1h). `200 {ok:true}`.
+
+   **Optional structured error fields (2026-11-02, additive).** Worker
+   bundle 2.2.3+ may add:
+
+   | Field | Values | Meaning |
+   |---|---|---|
+   | `error_class` | `deterministic` \| `transient` \| `oom` | the worker's own classification: ComfyUI rejected the prompt / timeout or ComfyUI unreachable or ComfyUI 5xx / CUDA OOM during execution. Absent when the worker cannot tell (other execution errors) |
+   | `comfy_status` | integer 100..599 | HTTP status of ComfyUI `POST /prompt` when the error comes from it |
+
+   The hub forwards both to backend `POST /gpu/task/error` (and into the
+   `animastor:error:*` fallback) after a shape check; any other value is
+   dropped, the hub never invents one. `reason` is unchanged and stays
+   mandatory for classification: workers 2.2.0–2.2.2 send only `reason`,
+   and the backend classifies them by text. Hub-generated reasons
+   (`worker_timeout`, `orphaned_task`) carry no `error_class`. Hub image
+   v0.2.8 (bundle 2.2.3) is the first to forward the fields; an older hub
+   drops them (the backend falls back to text). Retry policy that consumes
+   them — backend, `COMMAND_ONLY_GENERATION.md` §«Повтор после ошибки
+   воркера».
 
 `[CURRENT BEHAVIOR]` The worker polls in a loop with backoff; `401/403`
 triggers the worker's authFailed gate (no silent downgrade). Mixed-version
@@ -486,7 +506,11 @@ rollout is NOT supported — all three components reject a mismatching
      `architecture/GPU_RESULT_PUBLICATION.md`.
 3. **Error callback** — hub → `POST ${BACKEND_URL}/gpu/task/error`
    (notifyBackendError: 5 retries × 500 ms → fallback Redis key). Reasons:
-   worker-supplied reason, `worker_timeout`, `orphaned_task`.
+   worker-supplied reason, `worker_timeout`, `orphaned_task`. Optional
+   `error_class` / `comfy_status` forwarded from the worker (§9 step 4).
+   Backend answer body: `{ok:true, failed, reason, redispatch:false,
+   policy:{action, error_class, error_code, error_message, …}}` — the hub
+   only checks HTTP 2xx.
 4. **Cancel/cleanup** — `DELETE /queue/clear` (§8.5).
 5. **Setup contract** — backend probes `GET /worker-bundle/sha256` and
    `GET /installer/sha256`; installer engine downloads `/worker-bundle`
@@ -527,7 +551,8 @@ the protocol tokens; hub literals must match). All error bodies are JSON
 
 `[CURRENT BEHAVIOR]` Backend-facing failure reasons forwarded in
 `/gpu/task/error` (`reason` field): `worker_timeout`, `orphaned_task`,
-worker-supplied reason string (default `worker_error`). Delivery failure of
+worker-supplied reason string (default `worker_error`); plus the optional
+worker fields `error_class` / `comfy_status` (2026-11-02, §9 step 4). Delivery failure of
 an ERROR is downgraded to the Redis fallback key (§8.1) — never dropped
 silently.
 
@@ -574,8 +599,12 @@ inside the container (guarded: phase9c C7 + phase10d PB6).
 ## 13. Timeout / retry / cancel semantics
 
 `[NORMATIVE — FROZEN]` Division of responsibility: the hub is a dumb
-transport; the backend owns retry/re-dispatch policy (dispatch-lease expiry).
-The hub never re-dispatches a job on its own except the orphan requeue below.
+transport; the backend owns retry/re-dispatch policy (dispatch-lease expiry;
+since 2026-11-02 the GPU retry policy by error class —
+`COMMAND_ONLY_GENERATION.md` §«Повтор после ошибки воркера»). The hub never
+re-dispatches a job on its own except the orphan requeue below (a delivery
+repair for a crash between RPOPLPUSH and the running write, not a retry
+after a worker error).
 
 - **Per-job timeout:** `timeout_ms` from /task, floored at
   `max(Number(timeout_ms), GPU_TIMEOUT_MS)` when positive, else default

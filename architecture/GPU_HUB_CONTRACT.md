@@ -333,7 +333,8 @@ in backend src and gpu-hub must belong to a registered family
 | `animastor:dead-letter` | list (TTL 7d) | Poison / requeue-limit entries `{reason, ts, entry}` — kept for audit, never requeued. |
 | `animastor:job:{dispatch_id}:{job_id}` | string (TTL 3600) | Enqueue dedup, `SET NX EX`. BEST-EFFORT only — the authoritative result dedup is backend-side (`animastor:result-processed:*`). Backend deliberately DELs keys before legitimate re-dispatch (frozen debt, §8.7). |
 | `animastor:result:{build_id}:{bookId}:{chapterId}:{sceneId}:{stage}` | string (TTL 3600) | Result handoff, JSON `{job_id, result_base64, build_id, dispatch_id, protocol_version}`. Written on `/task/result` BEFORE backend forwarding (recovery path). Since hub v0.2.6: compare-and-deleted by the hub on a final backend ACK (§10.2a). The key is per scene×stage — the next IU of the same scene overwrites it. |
-| `animastor:error:{job_id}` | string (TTL 3600) | Error fallback key, JSON `{job_id, build_id, dispatch_id, protocol_version, reason, ts}` — written only when 5 backend delivery retries fail. |
+| `animastor:error:{job_id}` | string (TTL 3600) | Error fallback key, JSON `{job_id, build_id, dispatch_id, protocol_version, reason, ts}` (+ `error_class`, `hub_detail`, `source` when present) — written only when 5 backend delivery retries fail. |
+| `animastor:stale-dispatch-signal:{dispatch_id}:{job_id}` | string (TTL 3600) | Hub v0.2.9: `SET NX` marker — the backend is told about a 409 `no_running_record` ONCE per dispatch×job (result and the follow-up task/error share it, §11.1). |
 | `animastor:gpu-hub:workers` | hash (EXPIRE 900) | Worker registry `worker_id` → `{id, type, gpu, vram, version, image_tag, protocol_version, workspace_id, last_seen}`. TTL prunes stale registrations. |
 | `animastor:worker:heartbeat:{type}:{worker_id}` | string (TTL 30) | Heartbeat `{type, worker_id, ts, current_job_id, current_dispatch_id, workspace_id, mode, version, image_tag, protocol_version[, share_policy]}`. Written by /beacon, /task/next claim, and the 10s sweep refresh; cleared (busy fields null) on completion. |
 
@@ -383,7 +384,18 @@ Long-term replacement is the Phase 5/12 hub-API item; NOT part of 10A.
 
 `[CURRENT BEHAVIOR]` Backend cancels via `DELETE /queue/clear?dispatch_id=`
 (dispatch-engine), `?book_id=` / `?workspace_id=` (book routes, guest purge)
-or unscoped (full wipe). Backend also holds authoritative result/error dedup
+or unscoped (full wipe).
+
+`[NORMATIVE]` (2026-11-04, `reports/2026-11-04/regenerate-sweep-fix.md`): a
+book-wide `?book_id=` clear removes EVERY queued / running / result entry of
+the book — including other scenes' and other layers' jobs in flight. It is
+issued only by an **explicit** whole-book action: `/cancel-generation`, cache
+clear, book deletion, and `/regenerate` that is a full restart of the whole
+book (scope `whole_book` + `rebuild_all` + every enabled layer). Any narrower
+`/regenerate` (scene, chapter, from-scene, a single layer) clears only the
+`?dispatch_id=` of the scene×stage pairs it reset. Backend
+`clearHubDispatches([], {book_id})` is fail-closed: without
+`allowBookSweep: true` it sends nothing (orchestration 0.3.3+). Backend also holds authoritative result/error dedup
 families (`animastor:result-processed:*`, `animastor:error-processed:*`) and
 the per-book cancel flag (`animastor:generation:cancel:*`) — all
 backend-owned; the hub never touches them.
@@ -538,7 +550,7 @@ the protocol tokens; hub literals must match). All error bodies are JSON
 | `invalid_policy_id` | 400 | /task | non-UUID policy_id |
 | `invalid_policy_routing` | 400 | /task | policy_id + workspace_id coexist |
 | `invalid` | 400 | /task/result, /task/error | missing fields / version |
-| `stale_or_unknown_dispatch` | 409 | /task/result, /task/error | no running record / dispatch mismatch |
+| `stale_or_unknown_dispatch` | 409 | /task/result, /task/error | no running record / dispatch mismatch; body since v0.2.9: `{error, detail, job_id, dispatch_id}` (§11.1) |
 | `not_task_claimer` | 403 | /task/result, /task/error | submitter != claimer / lane mismatch |
 | `worker_identity_required` | 400 | /beacon | credential lacks id/type (unreachable via mirror) |
 | `not registered` | 404 | /task/next | no registry entry |
@@ -554,7 +566,34 @@ the protocol tokens; hub literals must match). All error bodies are JSON
 worker-supplied reason string (default `worker_error`); plus the optional
 worker fields `error_class` / `comfy_status` (2026-11-02, §9 step 4). Delivery failure of
 an ERROR is downgraded to the Redis fallback key (§8.1) — never dropped
-silently.
+silently. Since v0.2.9 also `stale_dispatch_result` (§11.1).
+
+### 11.1 409 `stale_or_unknown_dispatch` — detail and backend signal (hub v0.2.9)
+
+`[CURRENT BEHAVIOR]` since v0.2.9 (2026-11-04; incident
+`reports/2026-11-04/gpu-generation-stall.md` §5.3 — a result rejected with a
+bare 409 was lost, the backend learned about it 2.8 min later from
+stale-lease recovery). Body:
+
+```json
+{ "error": "stale_or_unknown_dispatch", "detail": "no_running_record" | "dispatch_mismatch",
+  "job_id": "<job_id>", "dispatch_id": "<dispatch_id of the request>" }
+```
+
+| `detail` | Condition | Hub action |
+|---|---|---|
+| `no_running_record` | `animastor:running[job_id]` is absent (a queue clear removed the claim, or the sweep/timeout finalised it) | the result is **not** stored; ONE signal per dispatch×job (`animastor:stale-dispatch-signal:*`, NX) through the regular error path: `POST /gpu/task/error` `{job_id, build_id, dispatch_id, protocol_version, reason: "stale_dispatch_result", error_class: "transient", hub_detail: "no_running_record", source: "task_result" \| "task_error", worker_id, workspace_id}`; on delivery failure — `animastor:error:{job_id}` with the same fields |
+| `dispatch_mismatch` | the job runs under another `dispatch_id` (re-dispatched) | nothing — the current dispatch is alive |
+
+The field `error` is unchanged (older workers keep working); workers 2.3.0+
+log the body. The orphan result is deliberately NOT accepted: without the
+running record the hub cannot prove the submitter is the claimer (PW-4 fail
+closed). The backend verifies the dispatch identity itself
+(`verifyDispatchIdentity`): a cancelled / superseded dispatch → `rejected`,
+nothing happens; a live one → `failStage` at once, class `transient`
+(code `stale_dispatch`) → GPU retry policy (retry after 30 s while the
+command is alive — active task, layer on, no cancellation). See
+`COMMAND_ONLY_GENERATION.md` §«Уборка хаба при /regenerate».
 
 ---
 

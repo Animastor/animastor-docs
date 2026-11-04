@@ -102,6 +102,9 @@ NEW ──→ PLACEHOLDER_READY ──→ GENERATING ──→ WAITING_CHUNKS �
 - Watchdog in reconcileCycle: `checkStalledAudioScenes()` — checks `last_chunk_at || started_at`
 - Recovery: if chunks on disk without last_chunk_at → resume merge
 - Invariant: `phase == DONE ⇔ asset.audio == READY`
+- Since 2026-11-04 (orchestration 0.3.4): `DONE` / `already_ready` / `ready` are authoritative only with a
+  committed GPU chunk on disk (`isSceneAudioCommitted`); a placeholder (silence) is never ready —
+  see [AUDIO_READY_SEMANTICS.md](AUDIO_READY_SEMANTICS.md).
 
 ### 2.4 Video Orchestrator (`video-orchestrator.js`)
 
@@ -330,6 +333,9 @@ After restart: audio-orch in WAITING_CHUNKS (old generation)
         → initPlaceholderReady → setGenerating ✅
       → dispatch to GPU (fresh generation)
 ```
+
+A `DONE` record is kept by this guard only when a committed audio chunk backs it; `DONE` without
+a commit is reset and re-dispatched (orchestration 0.3.4, [AUDIO_READY_SEMANTICS.md](AUDIO_READY_SEMANTICS.md) §4).
 
 ---
 

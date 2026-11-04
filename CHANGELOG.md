@@ -16,7 +16,7 @@ All notable changes to Animastor are documented here.
   recovery). Теперь повторная уборка — только `?dispatch_id=` сцена×стадий,
   сброшенных этим вызовом; book-wide — только при полном перезапуске всей
   книги (`whole_book` + `rebuild_all` + все включённые слои). В
-  `@animastor/orchestration` 0.3.3 `clearHubDispatches([], {book_id})` —
+  `@animastor/orchestration` 0.3.3 (не публиковался, вошёл в 0.3.4) `clearHubDispatches([], {book_id})` —
   fail-closed (нужен `allowBookSweep: true`), `resetScenes` возвращает
   `dispatchIds`. Лог `[REGENERATE] … hub sweep scope=… dispatch_ids=[…]
   book_sweep=…`. Backend `d123410` (merge `5960af6`). Описание —
@@ -54,7 +54,22 @@ All notable changes to Animastor are documented here.
   обойти — только `--force`. Boot-путь (`doctor --yes` без TTY) поднимает
   воркер, только если он не запущен. `doctor` и `animastor status` печатают
   `current job: none|<id>`. Документ: `04-planning/INSTALLER_ARCHITECTURE.md`
-  §7.2, §7.3, §7.9. Выкатка — вместе с хабом (repin `artifacts.lock.json`).
+  §7.2, §7.3, §7.9. Backend `aa673f0` (merge `2294cf3`); хаб v0.2.9 пинит
+  installer-src 0.2.8 (`0bfd894`, merge `c9aa24f`) — едет в образе хаба.
+- **«Готовое» аудио — только при коммите GPU, заглушка никогда не `ready`.**
+  Основание: `reports/2026-11-04/audio-placeholder-ready.md` — сцена
+  `sc-4bb85e02` (тишина-заглушка импорта, 0 чанков) стала `ready` без GPU, и
+  команды «аудио» отвечали `already_ready` / `already_done`. Теперь: заглушка
+  помечена sidecar-маркером; `ready` / `already_ready` / `already_done`
+  требуют канонический файл без маркера **и** чанки сцены на диске
+  (`isSceneAudioCommitted`); FSM `DONE` без коммита сбрасывается и стадия
+  уходит на GPU; ветка «файл > 8192 Б ⇒ ready» удалена; подъём записи в
+  `ready` — только с `{committed:true}`; `hasRealAudio` (reconcile,
+  scene-window, scene-restoration) — тот же предикат. Пакет
+  `@animastor/orchestration` **0.3.4** = 0.3.3 + этот фикс, одна публикация.
+  Backend `2e3bc91` + `b4c5847` (merge `3ba7862`). Документ:
+  `02-orchestration/AUDIO_READY_SEMANTICS.md`. SQL-исправление данных
+  (`scripts/fix-fake-ready-audio-20261104.sql`) — после выкатки, отдельно.
 
 ### Checked
 
@@ -62,6 +77,19 @@ All notable changes to Animastor are documented here.
   idle-воркера heartbeat есть — `/beacon` каждые 10 с пишет его с TTL 30 с.
   Гипотеза не подтвердилась, гейт не менялся; закреплено тестами (backend
   `tests/worker-liveness-idle.test.js`, хаб `tests/stale-dispatch-409.cjs`).
+- Кнопки Генератора против защиты «команда только по клику» (интеграция
+  A+B+C, `reports/2026-11-04/integration-A-B-C.md` §6). Ни одна кнопка не
+  заблокирована: «Генерировать аудио / изображения / видео» (все масштабы) и
+  «Повторить» / «Продолжить» строки шлют ровно один `/regenerate` с
+  `client_action`; «Стоп», «Стоп всё», стоп строки — `/cancel-worker`,
+  `/cancel-generation`. «Генерировать всё» и «Генерировать VBook» — **не**
+  `/regenerate`, а окно VBook (`/bootstrap` / `/bootstrap-next-window`) на
+  обоих фронтах; задач GPU они не создают, выбранный в диалоге «всё» масштаб
+  никуда не передаётся (только в тост). Это поведение было и до 04.11; решение
+  о нём — за владельцем (`architecture/COMMAND_ONLY_GENERATION.md` §Правило).
+  Backend: `/regenerate` без `client_action` и с `trusted=false` → 200, задача
+  создаётся (только лог). Тесты: web `50dcdd8` (merge `3df2ae4`), Android
+  `026713d` (merge `cba096f`), backend `tests/regenerate-scene-sweep.test.js`.
 
 ---
 

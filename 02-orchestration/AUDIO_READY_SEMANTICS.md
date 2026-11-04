@@ -1,6 +1,7 @@
 # Готовность аудио: `ready` — это коммит GPU, а не файл
 
-**Статус:** принято 04.11.2026. Backend `2e3bc91` + интеграция `b4c5847` (merge `3ba7862`),
+**Статус:** принято 04.11.2026. Backend `2e3bc91` + интеграция `b4c5847` (merge `3ba7862`) +
+снятие маркера `c577a22` (merge `6fbb191`),
 `@animastor/orchestration` **0.3.4**.
 **Основание:** `reports/2026-11-04/audio-placeholder-ready.md` (сцена
 `ba_1788172242081` / `ch-5e5a8c76` / `sc-4bb85e02`), интеграция —
@@ -58,11 +59,24 @@
    `isSceneAudioCommitted(...).ready`. Поэтому `ready`-строка над старой заглушкой без sidecar
    (созданной до маркера) и без чанков — тоже не настоящее аудио.
 
+7. **Публикация снимает маркер.** `audio/pipeline#buildSceneAudio` (merge и recovery из чанков)
+   и single-chunk fallback в `services/audio-orchestrator` удаляют sidecar, когда настоящее аудио
+   пишется по каноническому пути, где лежала заглушка. Без этого любая сцена, чья заглушка
+   создана после фикса, навсегда оставалась бы `placeholder_marker` (backend `c577a22`).
+
+> **Зависимость: чанки должны сохраняться.** Инвариант 2 считает доказательством коммита чанки
+> сцены на диске. `buildSceneAudio` удаляет чанки после merge, если не задан `KEEP_AUDIO_CHUNKS`
+> (по умолчанию в коде — **выключено**). При удалении чанков пробник сразу после merge отвечает
+> `no_committed_chunks` и для настоящего аудио. На проде чанки сохраняются (04.11 у всех реальных
+> `ready`-сцен они были на диске), но так должно быть в любом окружении с этим backend —
+> открытое решение владельца, `reports/2026-11-04/integration-A-B-C.md`.
+
 ## Где что лежит
 
 | Что | Файл |
 |---|---|
 | Маркер (чтение/запись) | `backend/src/audio/placeholder-marker.js` |
+| Снятие маркера при публикации | `backend/src/audio/pipeline.js` (`buildSceneAudio`), `backend/src/services/audio-orchestrator.js` |
 | Маркер при создании тишины | `backend/src/audio/silence.js` (`generateSilentAudio`) |
 | Пробник коммита | `backend/src/audio/validation.js` (`isSceneAudioCommitted`) |
 | Решение `already_ready` | `backend/src/audio/generation.js` (`generateSceneAudio`) |

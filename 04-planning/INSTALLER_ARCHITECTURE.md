@@ -5,8 +5,9 @@
 > updated 2026-10-30 — see §7.1 (installer `0.2.0`, bootstrap `1.2.0`,
 > worker bundle `2.2.0`); boot gate — §7.4 (installer `0.2.3`, 2026-10-31);
 > `animastor boot` + custom-node deps of the running ComfyUI — §7.5 (installer `0.2.4`, 2026-10-31);
-> tools before ✗, strict CLI, persistent node deps, platform ComfyUI restart — §7.6 (installer `0.2.5`, 2026-11-02)
-> **Installer version:** 0.2.5 (`animastor-backend: packages/animastor-installer/package.json`)
+> tools before ✗, strict CLI, persistent node deps, platform ComfyUI restart — §7.6 (installer `0.2.5`, 2026-11-02);
+> `doctor` does not restart a healthy or busy worker — §7.2, §7.3, §7.9 (installer `0.2.8`, 2026-11-04)
+> **Installer version:** 0.2.8 (`animastor-backend: packages/animastor-installer/package.json`)
 >
 > This document describes the **actually implemented** architecture of Animastor
 > Installer based on a full code audit, tests, and git history.
@@ -425,7 +426,8 @@ from `COMFY_PORT` + `NOTEBOOK_PATH`).
 (`--no-start-worker` opts out) with `NODE_BIN`, log
 `<base>/logs/worker.log`, start marker `<base>/logs/worker.pid`; worker keys
 are stripped from the spawn environment (real env wins over `.env` inside the
-worker). A running worker is restarted when `.env` or the bundle changed. The
+worker). A running worker is restarted only when `.env` or the bundle changed,
+and never in the middle of a task (installer 0.2.8, §7.9). The
 step "start worker" is `done` only after the worker logged `ComfyUI ready`;
 an immediate exit with `Worker authentication failed` is reported as a
 rejected key.
@@ -438,12 +440,13 @@ line plus one exact fix command (e.g. `animastor doctor`,
 all ✓ → "Done — return to the Animastor page".
 
 **`animastor` command.** `animastor start | stop | status | logs [-f] |
-doctor [--new-key]`, linked into `~/.local/bin` (root included — see §7.2;
+doctor [--new-key] [--wait-job-ms N] [--force]`, linked into `~/.local/bin` (root included — see §7.2;
 a foreign file is never overwritten) and pointing at a persistent installer
 copy `~/animastor/installer` (the bootstrap's temp dir is wiped). `doctor` =
 the idempotent install for the recorded profile(s) — nothing present is
-downloaded again, the worker is started again. `stop` never stops a ComfyUI
-the installer does not own.
+downloaded again; a stopped worker is started, a running one is left as is
+unless its configuration changed (installer 0.2.8, §7.9). `stop` never stops a
+ComfyUI the installer does not own.
 
 **Banner.** ASCII `ANIMASTOR` + installer / worker bundle / profile (manifest
 revision) / hub / bootstrap versions.
@@ -506,10 +509,29 @@ and `~/.profile` when the directory is not there yet. All installer and worker
 state stays in `$HOME`: `~/ComfyUI` (root + `venv`), `~/animastor/worker`,
 `~/animastor/tools`, `~/animastor/installer`, logs under `~/animastor/logs`.
 After a reboot `animastor doctor` / `animastor start` work without
-re-installing; `doctor` starts the worker again (and the ComfyUI it owns in
+re-installing; `doctor` starts a stopped worker (and the ComfyUI it owns in
 `managed` mode; `--no-start-worker` opts out) and, if a system package
 disappeared, offers to install it exactly as above before bringing the worker
 up.
+
+**`doctor` does not restart a running worker (installer 0.2.8).** Until 0.2.7
+`doctor` restarted the worker on every run: `configureEnv()` rewrote an
+unchanged `.env`, its new mtime was newer than the worker process, and
+`startWorker()` killed and re-spawned the worker as "stale" — on 2026-11-04 the
+audio and image workers were restarted at 13:55:15Z and 13:58:52Z, between
+tasks only by chance (`reports/2026-11-04/gpu-generation-stall.md` §8). Now:
+
+| Worker | `doctor` / `install` |
+|---|---|
+| not running | started |
+| running, `.env`/bundle unchanged | **left as is** — `worker already running (pid N), left as is` (also when unhealthy: the fix is `animastor reboot-worker`) |
+| running, configuration changed, idle | restarted |
+| running, configuration changed, busy | waits for the task up to `--wait-job-ms` (default 600000), then restarts; still busy → **FAILED** (`✗ Worker restart: worker is busy with <job> (pid N) — restart deferred …`, exit 1), the worker keeps running |
+| running, configuration changed, busy state unknown (no log of this process) | FAILED, not restarted |
+| `--force` | restarts for a changed configuration at once, even when busy (the task's result is lost) |
+
+An unchanged `.env` is not rewritten. Details — §7.9. The result of `doctor`
+and `animastor status` has the line `current job: none|<job_id>`.
 
 ### 7.3 ComfyUI ownership by fact, boot path (installer 0.2.2)
 
@@ -558,7 +580,12 @@ stays declined, also under `--yes`). `animastor doctor --yes` without a TTY is
 the boot path: no banner, no plan, no questions — wait up to `--comfy-wait-ms`
 (default 180 s, `ANIMASTOR_COMFY_WAIT_MS`) for the platform's ComfyUI, install
 missing apt packages (`dpkg-query` check → `apt-get install -y`), start the
-worker (and its own ComfyUI in `managed`), then ONE line plus exit 0/≠0.
+worker **only if it is not running** (and its own ComfyUI in `managed`), then
+ONE line plus exit 0/≠0. Installer 0.2.8: the boot path never restarts a
+running worker — not even for a changed `.env`/bundle (it logs
+`left as is — restart pending (…)`; the restart is done by an interactive
+`animastor doctor`, which waits for a running task, §7.9). The one line ends
+with `current job: none|<job_id>`.
 
 **PATH and autostart survive the reboot.** E2E nodes reset `~/.bashrc` and
 `~/.profile` on every boot while `/home` survives: `install`, `doctor` and
@@ -1078,6 +1105,75 @@ reason + re-gate); installer `tests/installer-v027.test.js` (N1 manifests →
 classes, N2 idempotent write, N3 preflight on an installed node + uninstall
 registration, N4 engine order, N5 dry-run).
 
+### 7.9 `doctor` does not restart a healthy or busy worker (installer 0.2.8)
+
+2026-11-04 (`reports/2026-11-04/gpu-generation-stall.md` §8): `animastor
+doctor` restarted the audio worker at 13:55:15Z and the image worker at
+13:58:52Z (12 s after its last result). Both fell between tasks by chance; a
+restart during a task loses the result (the hub notices the missing running
+record only through the orphan sweep / timeout). Cause in 0.2.7:
+`configureEnv()` wrote `.env` on every run even with identical content; the
+new mtime was newer than the worker process, so `startWorker()` treated the
+worker as stale and killed it.
+
+**Decision (`engine/worker.js: ensureWorker()`, used by the engine step
+"start worker" of `install`, `doctor` and the boot path):**
+
+1. No running worker for this installation → start it.
+2. Running and the configuration is unchanged → **left as is**
+   (`worker already running (pid N), left as is`); `startWorker()` is not
+   called at all. An unhealthy worker (no `ComfyUI ready`, last beacon failed)
+   is also left — the worker retries on its own; the end-to-end ✗ then names
+   `animastor reboot-worker` as the fix instead of another `doctor`.
+3. "Configuration changed" = this run changed `.env` (`configureEnv` reports
+   changed/added keys) or updated the bundle, or — persistent across runs —
+   `.env` / a bundle file (`package.json`, `*.cjs`) is newer than the worker's
+   start (`logs/worker.pid` mtime; `workerConfigNewer()`). A restart deferred
+   by one run is therefore still due on the next one.
+4. Changed and idle → restart. Changed and busy → poll the worker's log every
+   5 s for up to `--wait-job-ms` (default 600000; progress line every 30 s);
+   the task finished → restart; the worker exited → start. Still busy →
+   **FAILED**: `✗ Worker restart: worker is busy with <job> (pid N) — restart
+   deferred (waited S s; needed for: …)`, exit 1, fix "re-run `animastor
+   doctor` when the task finishes (or `--wait-job-ms`); `--force` restarts now
+   and loses the task's result". The worker keeps serving on its previous
+   configuration.
+5. Busy state unknown (no worker log, or the log was last written before this
+   process started — it is not its log) and a restart is needed → FAILED, not
+   restarted.
+6. `--force` → a needed restart is done at once, even when busy (with a
+   warning). `--force` does not restart a worker whose configuration is
+   unchanged — that is `animastor reboot-worker`.
+7. Boot path (`doctor --yes` without a TTY / `animastor boot`) → starts the
+   worker only if it is not running; a running worker is never restarted, a
+   needed restart is logged as `left as is — restart pending (…)`.
+8. `animastor start` keeps its old rule (restart for a newer `.env`) but never
+   kills a worker that is busy with a task.
+
+**Busy = the worker's own log.** The hub's `current_job_id` is in the hub's
+Redis and not readable from the node; the worker logs the same facts. Only the
+output of the current process counts (after its last `Worker <type> started`):
+`Task <job_id> (type=…` opens a task; `Done <job_id>`, `Failed <job_id>` or
+`Rejecting incompatible task` closes it. The log tail read is at most 4 MiB.
+Residual race: between the last read of the log and the kill the worker may
+take a new task (its poll interval is a few seconds; the window is
+milliseconds).
+
+**`current job:`** The doctor result (full block and the one-line boot output)
+and `animastor status` print `current job: none|<job_id>` (`unknown` when the
+busy state cannot be read from the log).
+
+**An unchanged `.env` is not rewritten** (mode 600 is still enforced).
+
+Tests: `tests/installer-v028.test.js` — D1 healthy worker → no-op; D2 busy
+worker not restarted, deferred after `--wait-job-ms` → ✗ + exit 1; D3 boot
+starts a stopped worker and leaves a running one; D4 changed `.env` → restart
+after `Done <id>`; D5 `--force`, unknown busy state; D6 unchanged `.env` keeps
+its mtime; D7 log parsing; D8 flags and `current job:`; D9 `animastor start`.
+
+Release: installer 0.2.8 ships with the next gpu-hub release (repin of
+`artifacts.lock.json` `installer-src` to the merged backend commit).
+
 ### Hub Artifact Serving (`gpu-hub/gpu-hub.js`)
 
 | Endpoint | Purpose | Auth |
@@ -1293,7 +1389,13 @@ source of `required`.
 **Start:** `engine/worker.js: startWorker()`
 - `node worker.cjs` as detached daemon
 - Idempotent: if already running for this dir, skip
-- If `.env` changed after process start → kill and restart (stale config)
+- If `.env` changed after process start → kill and restart (stale config) —
+  except while the worker is busy with a task (installer 0.2.8)
+
+**Install/doctor/boot:** `engine/worker.js: ensureWorker()` (installer 0.2.8, §7.9)
+- not running → start; running + configuration unchanged → left as is
+- configuration changed → restart only when idle (busy: wait `--wait-job-ms`,
+  then FAILED); boot never restarts; `--force` restarts even when busy
 
 **Stop:** `engine/worker.js: stopManagedWorker()`
 - UID guard: refuses to signal a foreign-uid process

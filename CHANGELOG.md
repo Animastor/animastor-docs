@@ -65,7 +65,10 @@ All notable changes to Animastor are documented here.
   (`isSceneAudioCommitted`); FSM `DONE` без коммита сбрасывается и стадия
   уходит на GPU; ветка «файл > 8192 Б ⇒ ready» удалена; подъём записи в
   `ready` — только с `{committed:true}`; `hasRealAudio` (reconcile,
-  scene-window, scene-restoration) — тот же предикат. Пакет
+  scene-window, scene-restoration) — тот же предикат. Настоящее аудио,
+  опубликованное поверх заглушки, снимает её маркер (backend `c577a22`, merge
+  `6fbb191`). Доказательство коммита — чанки на диске: `KEEP_AUDIO_CHUNKS`
+  должен быть включён везде, где работает backend (по умолчанию в коде выкл.). Пакет
   `@animastor/orchestration` **0.3.4** = 0.3.3 + этот фикс, одна публикация.
   Backend `2e3bc91` + `b4c5847` (merge `3ba7862`). Документ:
   `02-orchestration/AUDIO_READY_SEMANTICS.md`. SQL-исправление данных

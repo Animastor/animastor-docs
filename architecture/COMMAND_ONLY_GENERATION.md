@@ -151,6 +151,52 @@ progress-panel показывает строки `blocked`, `interrupted` и `fa
   Статус ассета сцены (`scene_assets`) фронты не выводят; при отсутствии
   файла показывается нейтральное «Не сгенерировано».
 
+## Уборка хаба при /regenerate и потерянный claim (2026-11-04)
+
+Основание: `reports/2026-11-04/gpu-generation-stall.md` §5.3, §9.1–9.2.
+`/regenerate` одной сцены (audio, `current_scene`) в конце делал
+`clearHubDispatches([], { book_id })` → `DELETE /queue/clear?book_id=`. Хаб
+удалил running-запись image-задачи **другой** сцены (её результат отклонён
+`409 stale_or_unknown_dispatch` и потерян, ≈100 с V100) и queued-задачу
+(восстановлена stale-lease recovery только через 7 мин). Отчёт исправления —
+`reports/2026-11-04/regenerate-sweep-fix.md`.
+
+- **`/regenerate` убирает на хабе только свои dispatch'и.** Повторная уборка
+  после освобождения claim'ов идёт по `?dispatch_id=` тех сцена×стадий,
+  которые этот вызов сбросил (`resetScenes` → `dispatchIds`). Book-wide
+  `?book_id=` — только при полном перезапуске всей книги: scope `whole_book`
+  + `rebuild_all` + все включённые слои книги. Сцена, глава, «с текущей
+  сцены», один слой всей книги — никогда (backend
+  `services/regenerate-hub-sweep.cjs`). Сброшенные сцены остаются вне active
+  index до записи реестра (`readdToActiveIndex:false`), поэтому между
+  уборкой и освобождением claim'ов новый dispatch этих сцен появиться не может.
+- **Fail-closed в пакете.** `clearHubDispatches([], { book_id })` без
+  `allowBookSweep: true` не шлёт ничего (warn `… REFUSED`, `refused: 1`;
+  `@animastor/orchestration` 0.3.3). Явные book-wide очистки —
+  `/cancel-generation`, очистка кэша, удаление книги — не меняются.
+- **Лог.** `[REGENERATE] <book>: command scope=… worker_types=… rebuild_all=…
+  client_action=<source id=… trusted=…>|absent ua=…` и
+  `[REGENERATE] <book>: hub sweep scope=… dispatch_ids=[…] book_sweep=true|false mode=…`.
+- **Потерянный claim доходит до backend сразу.** Хаб v0.2.9 на `409`
+  с `detail=no_running_record` один раз шлёт `POST /gpu/task/error`
+  `reason=stale_dispatch_result`, `error_class=transient` (фолбэк
+  `animastor:error:{job}`), `GPU_HUB_CONTRACT.md` §11.1. Backend проверяет
+  identity dispatch'а: отменённый/вытесненный → `rejected`, ничего не
+  делается; живой → `failStage` сразу и повтор по политике (класс
+  `transient`, код `stale_dispatch`: через 30 с, только под живой командой).
+  «Осиротевший» результат **не** принимается: без running-записи хаб не может
+  доказать, что отправитель — тот, кто взял задачу (PW-4), а поздний
+  результат отменённой работы обошёл бы отмену. Цена — один повтор
+  (у ComfyUI результат обычно в кэше, 13:51:57 — 0,3 с).
+- **Команда — только по клику (паритет фронтов).** Web и Android шлют
+  `/regenerate` только из обработчиков кликов («Старт» диалога масштаба,
+  «Повторить» строки): без `UserAction` клика запрос не уходит. В теле —
+  аддитивное `client_action {kind:'user_click', source, action_id, trusted}`
+  (`source` = `generator.scope_dialog` | `generator.retry_row`). «Старт»
+  игнорирует нажатия первые 400 мс после появления диалога (тап, открывший
+  диалог, или двойной тап не подтверждает его). Backend пока только логирует
+  `client_action` (старые клиенты — `absent`), не отказывает.
+
 ## Эпоха dispatch, отмена и stale-записи (2026-11-02)
 
 Основание: `reports/2026-11-02/gpu-e2e-installer-025-logs.md` §6.1, §8 п.3–5.

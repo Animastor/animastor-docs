@@ -4,6 +4,52 @@ All notable changes to Animastor are documented here.
 
 ---
 
+## 2026-11-04
+
+### Fixed
+
+- **`/regenerate` больше не сносит на хабе чужие задачи книги.** Инцидент
+  04.11 (`reports/2026-11-04/gpu-generation-stall.md` §5.3, §9.1): `/regenerate`
+  одной сцены (audio) закончился book-wide `DELETE /queue/clear?book_id=` —
+  хаб удалил running-запись image-задачи другой сцены (результат отклонён
+  409 и потерян) и queued-задачу (вернулась через 7 мин stale-lease
+  recovery). Теперь повторная уборка — только `?dispatch_id=` сцена×стадий,
+  сброшенных этим вызовом; book-wide — только при полном перезапуске всей
+  книги (`whole_book` + `rebuild_all` + все включённые слои). В
+  `@animastor/orchestration` 0.3.3 `clearHubDispatches([], {book_id})` —
+  fail-closed (нужен `allowBookSweep: true`), `resetScenes` возвращает
+  `dispatchIds`. Лог `[REGENERATE] … hub sweep scope=… dispatch_ids=[…]
+  book_sweep=…`. Backend `d123410` (merge `5960af6`). Описание —
+  `architecture/COMMAND_ONLY_GENERATION.md` §«Уборка хаба при /regenerate».
+- **Отклонённый хабом результат не теряется молча.** Хаб v0.2.9
+  (`047098b`, merge `fa3b036`): тело 409 `stale_or_unknown_dispatch` с
+  `detail` (`no_running_record` | `dispatch_mismatch`), `job_id`,
+  `dispatch_id`; при `no_running_record` — один сигнал backend'у через
+  `/gpu/task/error` (`reason=stale_dispatch_result`, `error_class=transient`,
+  фолбэк `animastor:error:*`). Backend сверяет identity dispatch'а: живой —
+  сразу `failStage` и повтор по политике (через 30 с, только под живой
+  командой); отменённый — `rejected`. «Осиротевший» результат не
+  принимается (PW-4). Воркер 2.3.0 (`f3ff2ec`, merge `c34c4ea`) пишет тело
+  409 в лог; хаб `f5ca702` пинит бандл 2.3.0. Контракт —
+  `architecture/GPU_HUB_CONTRACT.md` §11.1.
+- **Генератор шлёт `/regenerate` только по клику (паритет web + Android).**
+  Команда 13:49:28Z пришла из `app.animastor.org/generate` через диалог
+  масштаба («Текущая сцена» → «Запустить»); других отправителей в коде нет.
+  Теперь `startGeneration` без `UserAction` клика отказывает, в тело
+  добавлено `client_action {kind, source, action_id, trusted}` (backend
+  логирует, старые клиенты — `absent`), «Запустить» игнорирует нажатия
+  первые 400 мс после открытия диалога. Web `5f8379b` (merge `6f29cfc`),
+  Android 0.2.6 (versionCode 8) `8473182`.
+
+### Checked
+
+- Гейт исполнителя `hasLiveExecutorForLane` (§9.3 отчёта о зависании): у
+  idle-воркера heartbeat есть — `/beacon` каждые 10 с пишет его с TTL 30 с.
+  Гипотеза не подтвердилась, гейт не менялся; закреплено тестами (backend
+  `tests/worker-liveness-idle.test.js`, хаб `tests/stale-dispatch-409.cjs`).
+
+---
+
 ## 2026-11-03
 
 ### Added

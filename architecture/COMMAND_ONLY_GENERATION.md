@@ -138,7 +138,9 @@ progress-panel показывает строки `blocked`, `interrupted` и `fa
   `cancelled_stages`.
 - `POST /cancel-worker` по `task_id` действует только на цели задачи, по `type` —
   на стадию по всей книге. Та же процедура
-  (`backend/src/services/stage-cancellation.cjs`).
+  (`backend/src/services/stage-cancellation.cjs`). С 2026-11-05 по `task_id`
+  снимается и остановленная задача (`interrupted`/`blocked`/`failed`) — см.
+  §«Строка остановленной задачи».
 - `POST /cancel-generation`: всё прежнее, плюс PG `scene_assets` pending →
   `cancelled` по всем стадиям; осиротевший GENERATING → DIRTY (раньше PENDING);
   force-набор очищается.
@@ -417,3 +419,47 @@ Web (`@animastor/web-generator` 0.3.0 `taskStatus.ts` + app `GeneratePage.tsx`)
 Образ backend ставит `@animastor/orchestration` из npm. Порядок: публикация
 0.3.0 (владелец) → коммит `backend/package.json` + lock на `^0.3.0` → тесты →
 merge → approve-коммит → CI → digest → `up -d backend`.
+
+## Строка остановленной задачи (2026-11-05, задача K)
+
+Решение владельца 05.11. Правило «после рестарта ничего не возобновляется само»
+не меняется: без нажатия ▶ ничего не идёт.
+
+**Вид (web `GeneratePage.tsx` `StoppedRow`, Android `GenerateFragment`
+`renderTaskRowsToSections` + `bindStoppedRowButtons`).** Строки `interrupted`,
+`blocked`, `failed` — тот же макет, что у активной: название (`Аудио · Пролог`),
+`ready/total`, процент, прогресс-бар с текущим заполнением (приглушённый цвет).
+Вместо таймера — короткий статус: `task_status_interrupted` «прервано»,
+`task_status_blocked` «ожидает воркер», `task_status_failed` «ошибка: {0}», где
+`{0}` — прежний текст причины `failureText(error_class, error_code,
+error_message, type)`. Подпись сцены `failed` (scope ≠ current_scene) — как
+раньше, под баром. Справа две квадратные иконки размера ■ активной строки:
+
+- ▶ «Продолжить» (`task_continue`) — прежний `retryStoppedTask(row,
+  userAction('generator.retry_row'))` / Android `onRetryRow`: ровно один `POST
+  /regenerate` с `client_action`, тот же тип и scope;
+- ■ «Снять» (`task_dismiss`) — прежняя отмена `cancelTask(type, task_id)` →
+  `POST /cancel-worker {type, task_id}`. Строка исчезает, только если `task_id`
+  есть в ответе `task_ids`; иначе тост `task_dismiss_failed`, строка остаётся.
+  Снятые `task_id` фронт больше не рисует (backend держит `cancelled` ещё
+  ~30 с, `TERMINAL_RETENTION_MS`). `/regenerate` не отправляется.
+
+Обе иконки с `aria-label` / `contentDescription`. Нажатия игнорируются первые
+400 мс после появления остановленной строки (`STOPPED_ROW_ARM_MS`, как
+`SCOPE_DIALOG_ARM_MS`), 400 мс после принятого нажатия и пока запрос строки в
+полёте. Большой текстовой кнопки «Продолжить»/«Повторить» больше нет. Активные
+строки не менялись.
+
+**Backend (`routes/book/generation-routes.cjs`, cancel-worker).** По `task_id`:
+
+| статус задачи | действие | ответ |
+|---|---|---|
+| `active` | как раньше: `cancelStage` по целям задачи | `task_ids: [id]` |
+| `interrupted` / `blocked` / `failed` (audio/image/video) | реестр + PG `generation_tasks` → `cancelled` тем же `cancelStage({tasks:[task], wholeBook:false})`: active index, lease, копии хаба, dispatch-состояние, PG pending — только для целей задачи, не покрытых другой активной задачей того же типа | `task_ids: [id]` |
+| остановленная не-media (cover/vbook) | только реестр + PG-строка; book-wide ветки vbook/cover не вызываются | `task_ids: [id]` |
+| `cancelled` | ничего (идемпотентно, пока задача в реестре — ~30 с; затем она удалена и ответ 404, как для неизвестной) | 200, `task_ids: [id]` |
+| `completed` | ничего | `task_ids: []` |
+
+Book-wide cancel flag и tombstone не ставятся, другие задачи книги не
+затрагиваются. Тест — `backend/tests/cancel-stopped-task.test.js`.
+

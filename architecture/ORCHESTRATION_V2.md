@@ -176,6 +176,8 @@ GPU-нода: worker ──▶ gpu-hub (auth + relay, без состояния)
 
 Что исчезает: fence, `result-processed` dedup, staging-дерево с `.previous-canonical`, `animastor:result:*`, Phase A recovery, `RESULT_FENCING_MODE`, versioned-IU ветка (если не нужна), base64 и три JSON-хопа.
 
+**Контракт приёма (уточнено на этапе 1b).** `PUT …/result?attempt=N`: тело — сырой файл (`Content-Type` любой, не JSON), `Authorization: Bearer <upload_token>`; токен действителен до `deadline + 15 мин`. Ответы: `200 {status, sha256, job_status:'done', stage_jobs_created}` (повтор того же PUT после commit — `200 {idempotent:true}`); `401` — нет / неверный токен; `409 {code:'stale_attempt'}` — не текущая попытка (файл выброшен); `413` — больше лимита `ORCH_V2_MAX_UPLOAD_BYTES` (по умолчанию 512 МиБ, nginx `client_max_body_size 512m`, `proxy_request_buffering off`); `422 {code:'invalid_result', reason, job_status}` — проверка формата / тишины не пройдена (`queued` для повтора или `failed`); `503 {code:'orch_v2_disabled'}` — мастер-флаг выключен. `POST …/error?attempt=N` — тот же токен, ответы `200 {job_status, retry}` / `401` / `409`. Временный файл — `{dir(artifactPath)}/.incoming/{job_id}.{attempt}.{nonce}.tmp` (тот же раздел, что итоговый путь).
+
 ## 8. Воркер и хаб (протокол v3)
 
 ### 8.1 Выдача (pull, без очереди в хабе)
@@ -213,6 +215,8 @@ RETURNING j.*;
 
 Входные файлы (картинка для видео и т.п.) — по ссылке `GET /internal/gen/jobs/:id/input/:name` с тем же токеном, а не base64 в задаче.
 
+**Внутренний контракт выдачи (этап 1b).** `POST backend /internal/gen/claim` — заголовок `x-api-key` = `GPU_HUB_API_KEY` **обязателен** (без ключа или при не заданном ключе — `401`); тело `{worker_id, worker_type?}`. Тип, режим, workspace и политика шаринга воркера берутся из PG (`workers` + `share_policies`), а не из тела: users-политика → `policy_ids`, public-политика private-воркера → «одалживание» system. Ответ `{task: null}` или `{task: {job_id, attempt, kind, book_id, chapter_id, scene_id, unit_key, params, timeout_ms, deadline, upload_token, upload_url, error_url, job_type, protocol_version: 3}}`. Снаружи (nginx) `/internal/gen/claim` и `/internal/gen/beacon` недоступны — хаб ходит в docker-сети; публичен только `/internal/gen/jobs/`.
+
 ### 8.2 Результат и ошибка
 
 Воркер: `PUT upload_url` (поток файла из `COMFY_OUTPUT_DIR`, без base64), повтор с backoff до 5 раз при сетевой ошибке / 5xx; `409` → прекратить. Ошибка — `POST /internal/gen/jobs/:id/error` прямо на backend тем же токеном (§13.2); хаб в пути результата и ошибки не участвует.
@@ -220,6 +224,8 @@ RETURNING j.*;
 ### 8.3 Живость
 
 `POST hub /v3/beacon` раз в 10 с `{gpu, vram, version, current_job_id?}` → хаб пересылает → backend `UPDATE workers SET last_seen=now(), current_job_id=…` и отвечает `{cancel: [job_id…]}` (работы этого воркера в статусе `cancelled`). Хаб **не** продлевает heartbeat сам (I6). Redis-ключ heartbeat не нужен.
+
+**Внутренний контракт beacon (этап 1b).** `POST backend /internal/gen/beacon` (`x-api-key` обязателен) `{worker_id, current_job_id?}` → `{cancel: [job_id…]}`: отменённые работы воркера за последний час + `current_job_id`, если она у этого воркера уже не `running` (переочередь сторожем, отдана другому).
 
 ### 8.4 Хаб v3 — что остаётся
 
@@ -265,6 +271,10 @@ RETURNING j.*;
 | 2 | Claude Code | image (IU), фронты (паритет), перенос layer-config, удаление 5 мёртвых таблиц | BA: аудио + картинки по команде |
 | 3 | Claude Code | video (группы + merge), `generate_all` (задача H, окна VBook как ступень команды) | BA целиком |
 | 4 | Claude Code + кодер | Все книги на v2; удаление `src/legacy/` пакета (старый 0.3.x), кода категории A, генерационных ключей Redis, v2-путей хаба, таблиц §4.3; docs | grep по удалённым ключам/модулям пуст; тесты зелёные |
+
+Ход реализации:
+- **1a** (2026-11-05) — ядро `@animastor/orchestration` 1.0.0 (`src/gen/`, старый код в `src/legacy/`) + схема PG; без роутов. Backend `orch-v2/1a` `4aaa791`.
+- **1b** (2026-11-06) — доработка ядра (§4.2a `gen_command_jobs`, `build_id`/`layer`/`summary`, отмена по слою, `invalid_result` ×1) + подключение к backend: только аудио, только `books.orchestration='v2'`, мастер-флаг `ORCH_V2_ENABLED` (по умолчанию выкл.); единый предикат изоляции legacy; nginx `/internal/gen/jobs/`. Backend `orch-v2/1b` `7b24fab`, `49e58d7`; deploy `orch-v2/1b` `81dff42`. Без выкатки и npm publish.
 
 Задача G и крупные правки старой оркестрации заморожены (решение 05.11). Хвосты todo, которые закрываются v2: G, этапы 2–3 защиты /regenerate, retry policy соседних job, ложный «онлайн» воркера, `/queue/clear` всех, NULL-дубли `scene_assets`, D (счётчики панели).
 

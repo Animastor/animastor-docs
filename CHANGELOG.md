@@ -4,6 +4,24 @@ All notable changes to Animastor are documented here.
 
 ---
 
+## 2026-11-06
+
+### Added
+
+- **Оркестрация v2, этап 1b: аудио на ядре `gen` для книг `books.orchestration='v2'`** (backend
+  `orch-v2/1b` `7b24fab` + `49e58d7`, deploy `orch-v2/1b` `81dff42`; не влито, не выкачено, npm не
+  опубликован). Новая редакция ADR `architecture/ORCHESTRATION_V2.md` положена как приложена
+  (sha256 `beb89328…e828`); §7–§8 дополнены контрактом `/internal/gen/*`, §12 — ходом реализации.
+  Ядро: `gen_command_jobs` (присоединение — явной связью, прогресс и завершение — только по ней),
+  `gen_jobs.build_id`/`layer`, `gen_commands.summary`, `cancel({bookId, layer})`, стоп команды не
+  трогает работы другой активной команды, `invalid_result` — один повтор. Backend: мастер-флаг
+  `ORCH_V2_ENABLED` (выкл. по умолчанию; нужен `ORCH_V2_UPLOAD_SECRET` и ffmpeg), порты аудио
+  поверх существующего кода (тот же workflow, что старый путь, байт-в-байт), `/regenerate`
+  (image/video → 409 `v2_layer_not_supported_yet`), `cancel-generation`, `cancel-worker`,
+  `PUT layer-config`, `progress-panel` в прежнем формате ответа (фронты без изменений),
+  удаление книги чистит `gen_*`; legacy не трогает v2-книги (единый предикат, fail-closed).
+  Переключение книги: `UPDATE books SET orchestration='v2' WHERE book_id=…` (см. отчёт этапа).
+
 ## 2026-11-05
 
 ### Added

@@ -6,6 +6,13 @@ All notable changes to Animastor are documented here.
 
 ## 2026-11-05
 
+### Decided
+
+- **Оркестрация генерации v2 (решение D15).** PG (`gen_commands`/`gen_jobs`) — единственная
+  правда, pull-выдача через хаб без состояния, приём результата одной транзакцией; старая
+  оркестрация заморожена. `architecture/ORCHESTRATION_V2.md`,
+  `architecture/ORCHESTRATION_V2_RECON.md` (разведка), `architecture/decisions.md` D15.
+
 ### Changed
 
 - **Генератор: счётчик воркеров больше не «замерзает» (задача L).** Разбор —

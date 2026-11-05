@@ -536,6 +536,12 @@ the **dangerous places** explicitly.
      guaranteed atomically.
    - Contract: book delete is canonical-content removal; derived/runtime state is best-effort cleaned.
      This is a documented gap (Phase 5/6), not a Phase 2 fix. No Redis protocol change.
+   - 2026-11-05: `cleanBookRedisKeys` (redis-helpers; called by `DELETE /book` and
+     `DELETE /book/:id/cache`) also removes the per-scene retry budget
+     `animastor:retry-budget:{book}:{chapter}:{scene}:{stage}` — orchestration writes it without a TTL,
+     so it used to outlive the book forever. Pattern `retry-budget:{book}:*:*:*` (book id glob-escaped);
+     the `global` / `type:*` / `worker:*` aggregates are never touched. Keys that already carry a TTL
+     (`dispatch-completed:*` ~30 min, `cancelled-workers:{book}` 1 h) expire on their own by design.
 
 ---
 

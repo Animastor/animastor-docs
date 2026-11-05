@@ -41,6 +41,13 @@ All notable changes to Animastor are documented here.
 
 ### Fixed
 
+- **`DELETE /book` больше не оставляет `retry-budget` в Redis.** Ключ
+  `animastor:retry-budget:{book}:{chapter}:{scene}:{stage}` (orchestration пишет его без TTL)
+  не входил в шаблоны `cleanBookRedisKeys` и жил вечно после удаления книги — найдено при
+  проверке релиза L (`reports/2026-11-05/release-L.md` §6). Теперь удаляется вместе с книгой и при
+  `DELETE /book/:id/cache`; шаблон `retry-budget:{book}:*:*:*` с экранированием id, агрегаты
+  `global`/`type:*`/`worker:*` не затрагиваются. Фронты не менялись. backend `6678d8e`,
+  `architecture/PHASE_2_CONTRACTS.md` §9.2 п. 4.
 - **«Вся книга» (аудио) больше не застревает на утечке квоты.** Инцидент BA
   (`reports/2026-11-05/live-check-A-B-C.md` §6, §10; `reconcile-quota-leak.md`): исходы
   диспатча без jobs, которые executor считал завершёнными (`already_done`,

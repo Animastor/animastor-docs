@@ -4,6 +4,23 @@ All notable changes to Animastor are documented here.
 
 ---
 
+## 2026-11-06
+
+### Feat
+
+- **Скрипт снимка исходников `scripts/source-snapshot.sh` (репозиторий `animastor-deploy`).**
+  Создаёт `/home/animastor/backups/sources/animastor-sources-<UTC>.tar.zst` из деревьев
+  файлов ветки `main` всех bare-репозиториев `/home/animastor/repos/*.git` (`git archive
+  --format=tar --prefix=<имя>/ refs/heads/main`, явно `refs/heads/main`, не HEAD).
+  В архиве `README.txt` + `MANIFEST.txt`; `--dry-run` — только список репо со sha main.
+  Флаг `--upload` выгружает архив и `.sha256` на `gdrive:Animastor-source-snapshots/`
+  (отдельная папка на базовом remote `gdrive:`, не внутри `gdrive-crypt`, **без
+  шифрования — по решению владельца 06.11**), с сверкой загрузки через `rclone lsl`.
+  Ротация: локально последние 4 архива, на Диске последние 12 (только `animastor-sources-*`).
+  Cron (пользователь `animastor`): воскресенье 22:37 UTC, после `backup.sh` в 21:47.
+  Это не замена `backup.sh` — без git-истории; полная история в ночных git bundle.
+  Документация: `docs/BACKUP.md` §8, `prod/agents/AGENTS.md`.
+
 ## 2026-11-05
 
 ### Decided

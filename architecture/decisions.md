@@ -74,6 +74,11 @@
 - **Decision:** The web app mirrors the Android architecture (stores = ViewModels); all lifecycle state comes from the backend via REST/SSE; frontend computes only UI-derivations (timer, panel rows) and persists only session/position locally.
 - **Evidence:** `generateStore.ts`/`playbackStore.ts` module headers ("1:1 with Android"), API usage, no direct Redis/PG access.
 
+## D15. Оркестрация генерации v2 (2026-11-05)
+
+- **Decision:** Оркестрация генерации v2: PG (gen_commands/gen_jobs) — единственная правда, pull-выдача через хаб без состояния, приём результата одной транзакцией; старая оркестрация заморожена.
+- **См.:** [ORCHESTRATION_V2.md](ORCHESTRATION_V2.md), [ORCHESTRATION_V2_RECON.md](ORCHESTRATION_V2_RECON.md).
+
 ---
 
 *Last verified against code: August 2026 (Reconnaissance #1).*

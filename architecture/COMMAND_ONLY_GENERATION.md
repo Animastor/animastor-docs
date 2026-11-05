@@ -108,6 +108,8 @@ index. Параметр запроса `register_for_gpu` больше ниче�
 | реестр задач (Redis) + PG `generation_tasks` | `blocked` | `no_worker_available` при dispatch стадии | нет живого воркера нужного типа; `blocked_reason: no_worker:<type>`; стадия → DIRTY; задача ничего не авторизует, повтор — только новой командой (она вытесняет blocked-задачу) |
 | реестр задач + PG `generation_tasks` | `interrupted` | старт backend: все `active` / `queued` / `running` | прогон прервал перезапуск; возобновление только кнопкой (новая команда вытесняет interrupted-задачу) |
 | реестр задач + PG `generation_tasks` | `failed` | терминальная ошибка GPU-попытки (deterministic / unknown или исчерпаны повторы transient / oom), §«Повтор после ошибки воркера» | `error_class` / `error_code` / `error_message` / `failed_scene`; задача ничего не авторизует; повтор — только новой командой (вытесняет failed-задачу) |
+| реестр задач + PG `generation_tasks` | `failed` (`error_class=no_progress`) | стадия под командой ≥ 3 попыток и ≥ 5 мин заканчивается без jobs и без завершения (`no_jobs_generated`, `already_done_rejected:*`, ошибки executor'а; capacity-исходы и backpressure не считаются), §«Задача не висит и не исчезает молча» | `error_code` = последняя причина, `error_message` «генерация не идёт: …»; дальше как `failed` |
+| реестр задач + PG `generation_tasks` | `blocked` (`no_worker:<type>`) | backpressure (квота занята) **и** ни одного живого heartbeat воркера типа ни в одном scope | как `blocked` выше; раньше такая задача висела с таймером, пока квота не освободится |
 | реестр задач + PG `generation_tasks` | `cancelled` | cancel-worker, `PUT /layer-config` X=false, cancel-generation | команда отменена пользователем или выключением слоя |
 | PG `scene_assets` | `cancelled` | те же отмены | бывшая `pending`-строка отменённой стадии; `ready` / `placeholder` / `stale` не трогаются; reconcile и C8 её как работу не читают |
 | PG `scene_assets` | `failed` (`error: blocked:no_worker:<type>`) | `no_worker_available` | бывшая `pending`-строка заблокированной стадии |
@@ -385,6 +387,30 @@ Web (`@animastor/web-generator` 0.3.0 `taskStatus.ts` + app `GeneratePage.tsx`)
   `failureText`). Фронт при этом ничего не делает — повторяет сервер.
 - **Старый backend** без новых полей — строки как раньше (поля
   необязательные).
+
+## Задача не висит и не исчезает молча (2026-11-05)
+
+Инцидент BA (`reports/2026-11-05/live-check-A-B-C.md` §10, `reconcile-quota-leak.md`):
+«Вся книга» встала, `active-audio` 8/8 без jobs, строка «Аудио 18/31» висела с таймером,
+после ухода воркера пропала без «Стоп», хотя задача в реестре оставалась `active`, в PG —
+`running`. Правила (backend + `@animastor/orchestration` 0.3.5):
+
+- **Готовность в панели — по стадиям, не по чанкам.** Аудио-сцена засчитывается целиком
+  только при asset `READY`; пока нет — её чанки, не более `expected − 1`. Записи чанков
+  `ready` (их ставит recovery `completeChunk`) больше не дают ложных 100% / `done=true` /
+  `any_incomplete=false` у задачи, которая на деле не завершена. Сцены с подтверждённым
+  коммитом становятся READY на первом тике команды (без GPU) и сразу засчитываются.
+- **Без движения → статус с причиной.** backpressure при нуле живых воркеров типа →
+  `blocked no_worker:<type>`; длительная серия исходов без jobs → `failed no_progress`
+  (таблица «Статусы»). Обе строки видны с причиной и «Повторить» (фронты не менялись —
+  `blocked`/`failed` они уже показывают; `no_progress` выводится как «неизвестная ошибка —
+  <error_message>»).
+- **Строка не пропадает.** Строки не фильтруются по числу онлайн-воркеров (ни backend, ни
+  web/Android). Реестр задач продлевает TTL (4 ч), пока в нём есть нетерминальная задача
+  (`active` / `blocked` / `failed` / `interrupted`); удаляются только терминальные
+  (`completed`/`cancelled`) через 30 с. Уход воркера при живой задаче даёт `blocked`, а не
+  исчезновение.
+- Квота и reconcile — `02-orchestration/DISPATCH_QUOTA_AND_RECONCILE.md`.
 
 ## Выкатка
 

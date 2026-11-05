@@ -87,6 +87,9 @@ The only module that writes lifecycle state. **Nobody calls `state.setAssetState
 - **Retry budget**: per-(scene, stage) INCR + TTL counter. `consumeRetryBudget` in `finalizeDispatch('failure')`.
 - **Dispatch ID**: UUID v4, `verifyDispatchIdentity` in callback.
 
+- Квота / lease / финализация каждого исхода / stale-lease recovery / сверка счётчика —
+  `DISPATCH_QUOTA_AND_RECONCILE.md` (0.3.5, 2026-11-05).
+
 ### 2.3 Audio Orchestrator (`audio-orchestrator.js`)
 
 Detailed state machine for the audio pipeline:

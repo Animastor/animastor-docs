@@ -42,8 +42,10 @@
 
    Причины отказа: `placeholder_marker`, `no_canonical`, `canonical_invalid`,
    `no_committed_chunks`, `missing_chunks`, `incomplete_chunks`; успех — `committed`.
-   В `generateSceneAudio` дополнительно нужна запись PG `status='ready'`, а Redis-состояние
-   `pending`/`dirty` отменяет fast-path.
+   В `generateSceneAudio` дополнительно нужна запись PG: `ready` — обычный fast-path
+   (Redis-состояние `pending`/`dirty` его отменяет); `stale` / `pending` / `dirty` при
+   подтверждённом коммите — **восстановление без GPU** (`READY_RESTORE`, orchestration 0.3.5,
+   см. ниже); нет строки или `placeholder` — отказ (`READY_REJECTED`).
 3. **В `ready` поднимает только путь коммита.** `replacePlaceholderWithRealAudio()` требует
    `{ committed: true }` и сразу отказывает помеченной заглушке (запись → `placeholder`).
    Ветка «файл больше 8192 Б ⇒ зарегистрировать как ready» **удалена**.
@@ -70,6 +72,24 @@
 > `no_committed_chunks` и для настоящего аудио. На проде чанки сохраняются (04.11 у всех реальных
 > `ready`-сцен они были на диске), но так должно быть в любом окружении с этим backend —
 > открытое решение владельца, `reports/2026-11-04/integration-A-B-C.md`.
+
+8. **Закоммиченное аудио текущего поколения не перегенерируется и не понижается**
+   (2026-11-05, orchestration 0.3.5, `reports/2026-11-05/reconcile-quota-leak.md`).
+   Кнопка «Генерировать аудио → Вся книга» доделывает недостающее, готовое не трогает.
+   - `stale`-сцена с коммитом: `generateSceneAudio` → `already_ready` (лог `READY_RESTORE`) →
+     `completeStage` под живым dispatch; **version gate** (версии контента и аудио-конфига
+     текущего поколения) решает: прошёл — PG `ready` + asset READY без GPU, не прошёл — DIRTY,
+     коммит не поднимается. Раньше такая сцена уходила в per-segment путь, где каждый чанк —
+     cache hit, и получала `no_jobs_generated` бесконечно (13 сцен BA).
+   - FSM `DONE` + коммит (`AUDIO_ALREADY_DONE`) завершает стадию тем же `completeStage`, а не
+     просто «пропускает» (иначе asset оставался PENDING и его подхватывал stale-lease recovery).
+   - recovery `completeChunk` идёт с живым `dispatchId` (был литерал `stale-recovery` →
+     `COMPLETE-STAGE Rejected … stale_dispatch`, чанки `ready`, стадия `stale`).
+   - stale-lease recovery не помечает DIRTY стадию с PG `ready` + коммитом
+     (`reconciliation-engine.isStageCommittedReady`).
+
+   Предикат готовности остаётся один — `isSceneAudioCommitted` (инвариант 2); задача G
+   (доказательство коммита в PG) расширяет его там же.
 
 ## Где что лежит
 

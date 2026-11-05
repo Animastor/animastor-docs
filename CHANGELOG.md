@@ -4,6 +4,32 @@ All notable changes to Animastor are documented here.
 
 ---
 
+## 2026-11-05
+
+### Fixed
+
+- **«Вся книга» (аудио) больше не застревает на утечке квоты.** Инцидент BA
+  (`reports/2026-11-05/live-check-A-B-C.md` §6, §10; `reconcile-quota-leak.md`): исходы
+  диспатча без jobs, которые executor считал завершёнными (`already_done`,
+  `recovered_via_completeChunk`), держали lease + meta + слот квоты →
+  `active-audio` 8/8 при нуле задач, `BACKPRESSURE_DELAY` каждые 5 с. Теперь любой исход
+  без jobs финализируется сразу; DRIFT-сверка находит фантомные диспатчи (нет
+  `jobs_enqueued`, нет job в хабе) и снимает их; stale-lease recovery не понижает стадию
+  с подтверждённым коммитом текущего поколения. `@animastor/orchestration` 0.3.5.
+  Описание — `02-orchestration/DISPATCH_QUOTA_AND_RECONCILE.md`.
+- **Решение: закоммиченное аудио не перегенерируется и не понижается.** `stale`-сцена с
+  fenced-коммитом восстанавливается в `ready` без GPU (`READY_RESTORE` → `completeStage`,
+  version gate решает); FSM `DONE` + коммит завершает стадию тем же путём; recovery
+  `completeChunk` — под живым `dispatchId`. «Генерировать аудио → Вся книга» = доделать
+  недостающее. `02-orchestration/AUDIO_READY_SEMANTICS.md` инвариант 8.
+- **Задача не висит и не исчезает молча.** Готовность аудио в progress-panel — по стадиям
+  READY, не по записям чанков (раньше 31/31 `done` при 13 stale-сценах → клиент скрыл
+  строку). backpressure без живых воркеров типа → `blocked no_worker:<type>`; серия исходов
+  без движения (≥3 попыток, ≥5 мин) → `failed` `error_class=no_progress`. Реестр задач
+  продлевает TTL, пока есть нетерминальная задача. Строки по числу воркеров не
+  фильтруются. Фронты не менялись. `architecture/COMMAND_ONLY_GENERATION.md`
+  §«Задача не висит и не исчезает молча».
+
 ## 2026-11-04
 
 ### Fixed

@@ -2,7 +2,7 @@
 
 Статус: **УТВЕРЖДЁН** владельцем 2026-11-05 (вариант «очередь только в PG»; решения по открытым вопросам — §13). Реализация по этапам §12.
 Основание: разведка `architecture/ORCHESTRATION_V2_RECON.md` (e3c754c; backend 34634ca, gpu-hub c9aa24f, worker c34c4ea, web d9cb135, android be1233c). Ссылки вида «разведка §N» — туда.
-Заменяет: `@animastor/orchestration` 0.3.x — новая архитектура выходит в том же пакете как **1.0.0** (код с нуля; старый код на время миграции — `src/legacy/`, экспорт `legacy`, удаляется на этапе 4), оркестрационную часть backend (категория A разведки §10), Job Protocol v2 (`JOB_PROTOCOL_V2.md`) — для путей v2.
+Заменяет: `@animastor/orchestration` 0.3.x — новая архитектура выходит в том же пакете как **1.0.0** (код с нуля; старый код на время миграции — `src/legacy/`, корень пакета отдаёт прежний API 0.3.5 + пространство `gen`; legacy удаляется на этапе 4), оркестрационную часть backend (категория A разведки §10), Job Protocol v2 (`JOB_PROTOCOL_V2.md`) — для путей v2.
 Не трогает: агенты VBook / LLM-пайплайн (`pipeline-runner`), установщик, сборку workflow ComfyUI, склейку медиа (категория B).
 
 ---
@@ -50,6 +50,7 @@
 | `force` | BOOL | перегенерировать готовое |
 | `client_action_id` | TEXT | идемпотентность клика; `UNIQUE (book_id, client_action_id)` |
 | `status` | TEXT | `active → done | failed | cancelled` (+ `partial`: завершена, есть failed-работы) |
+| `summary` | JSONB | `{jobs_created, joined, skipped_ready}` на момент создания (возвращается и при повторном клике) |
 | `created_at`, `finished_at`, `cancelled_by`, `error` | | |
 
 ### 4.2 `gen_jobs` — единица работы
@@ -59,8 +60,10 @@
 | Колонка | Тип | Смысл |
 |---|---|---|
 | `job_id` | UUID PK | новый, не строковая грамматика v2 |
-| `command_id` | UUID FK | |
+| `command_id` | UUID FK | команда, создавшая работу (кто ещё ждёт её — `gen_command_jobs`, §4.2a) |
 | `workspace_id`, `user_id`, `book_id`, `chapter_id`, `scene_id` | | денормализованы для выдачи и фильтров |
+| `build_id` | TEXT NOT NULL | build книги на момент команды (пути артефактов §7) |
+| `layer` | TEXT | `audio | image | video` — для отмены по слою (§6.4); выводится из kind |
 | `unit_key` | TEXT | `0003` (чанк), `iu-<id>` (IU), `g2` (группа видео), `scene` (склейка) |
 | `kind` | TEXT | `audio_chunk`, `iu_image`, `video_group`, `audio_merge`, `video_merge` |
 | `executor` | TEXT | `gpu:audio`, `gpu:image`, `gpu:video`, `local` |
@@ -81,12 +84,16 @@
 - **одна живая работа на юнит:** `UNIQUE (book_id, chapter_id, scene_id, kind, unit_key) WHERE status IN ('queued','running')` — повторный клик или пересекающаяся команда не создаёт дубль (§6.2);
 - сторож: `(deadline) WHERE status='running'`; прогресс: `(command_id, status)`.
 
+### 4.2a `gen_command_jobs` — какие команды ждут работу
+
+`(command_id, job_id)` PK. Строка пишется для каждой работы, которую команда создала **или к которой присоединилась** (§6.1 п.4), и для работ следующих ступеней (§6.3). Прогресс и завершение команды считаются только по этой таблице.
+
 ### 4.3 Что остаётся и что уходит
 
-- `scene_assets` — остаётся как «что лежит на диске»: пишется только транзакцией приёма (§7) и созданием заглушек при импорте. Добавить `job_id`, `sha256`. Статусы: `placeholder | ready | stale`. Убрать NULL-build дубли (409 строк) миграцией.
+- `scene_assets` — остаётся как «что лежит на диске»: пишется только транзакцией приёма (§7) и созданием заглушек при импорте. Добавить `job_id`, `sha256`. Ключ — сцена × тип: `ready` + `sha256` + `job_id` ставятся только склейкой (`audio_merge` / `video_merge`; для картинок — IU-указатель, этап 2); готовые части (чанк, IU, группа) — в `metadata.gen_parts[unit_key]`. Статусы: `placeholder | ready | stale`. Убрать NULL-build дубли (409 строк) миграцией.
 - `layer-config` — переносится из Redis в PG (`book_layer_config`).
 - Удаляются после этапа 4: `generation_tasks`, `asset_states`, `generation_cancellations`, `iu_image_fence_reservations`, `iu_image_pointers` (если versioned IU не включён), `reconciliation_events`; все генерационные ключи Redis (разведка §4.5), кроме pub/sub прогресса — его заменяет PG `LISTEN/NOTIFY` (§9), так что Redis генерации не нужен вовсе.
-- Пять таблиц, в которые никто не пишет (разведка §3.3), — удалить сразу на этапе 1.
+- Пять таблиц, в которые никто не пишет (разведка §3.3: `asset_states`, `cache_entries`, `asset_dependencies`, `reconciliation_events`, `output_manifests`), — удалить на этапе 2.
 
 ## 5. Компоненты
 
@@ -123,7 +130,7 @@ GPU-нода: worker ──▶ gpu-hub (auth + relay, без состояния)
 1. `INSERT gen_commands … ON CONFLICT (book_id, client_action_id) DO NOTHING` → дубль клика возвращает существующую команду (`200`, тот же `command_id`). Этап 2–3 защиты /regenerate (428, дедуп по action_id) закрывается этим.
 2. Слои = запрошенные ∩ включённые. Пусто → `409 layer_disabled` (как сейчас).
 3. `planUnits` → список юнитов. Без `force` пропускаются юниты, у которых `scene_assets.status='ready'` для текущего контента (сравнение `scene_hash` / `content_version`).
-4. `INSERT gen_jobs … ON CONFLICT (живой юнит) DO NOTHING` → если юнит уже в работе по другой команде, новая работа не создаётся (команда «присоединяется»; прогресс считает и такие юниты, §9).
+4. `INSERT gen_jobs … ON CONFLICT (живой юнит) DO NOTHING` → если юнит уже в работе по другой команде, новая работа не создаётся, а команда «присоединяется»: строка в `gen_command_jobs` на существующую работу.
 5. Создаются только работы **первой ступени** (§6.3). Ответ: `{command_id, summary: {jobs_created, joined, skipped_ready}}` — закрывает расхождение контракта (фронты ждут `summary`; `build_id` больше не нужен, вместо него `command_id`).
 
 Ничего не отменяется у других команд. Широкая отмена — только явной кнопкой (§6.4).
@@ -134,7 +141,7 @@ GPU-нода: worker ──▶ gpu-hub (auth + relay, без состояния)
 
 ### 6.3 Ступени внутри команды
 
-Зависимости не хранятся графом; переход создаётся в той же транзакции, что завершает предыдущую работу (§7), **только если команда `active` и слой включён**:
+Зависимости не хранятся графом; переход создаётся в той же транзакции, что завершает предыдущую работу (§7), **только если хотя бы одна связанная с ней (`gen_command_jobs`) команда `active`, в её `layers` есть этот слой, и слой включён**; новая работа связывается со всеми такими командами:
 
 | Завершилось | Что создаётся |
 |---|---|
@@ -148,8 +155,8 @@ GPU-нода: worker ──▶ gpu-hub (auth + relay, без состояния)
 ### 6.4 Отмена
 
 - **Стоп всего по книге** (`cancel-generation`): `UPDATE gen_commands SET status='cancelled' WHERE book_id=$1 AND status='active'` + `UPDATE gen_jobs SET status='cancelled' WHERE command_id IN (…) AND status IN ('queued','running')`. Одна транзакция.
-- **Стоп слоя** (`cancel-worker type=…` или выключение слоя в `PUT layer-config`): то же с фильтром по `executor`.
-- **Стоп команды** (новое, по `command_id`).
+- **Стоп слоя** (`cancel-worker type=…` или выключение слоя в `PUT layer-config`): то же с фильтром по `layer` (аудио снимает и `audio_merge`).
+- **Стоп команды** (по `command_id`): команда → `cancelled`; её работы → `cancelled` **только если они не связаны (`gen_command_jobs`) с другой активной командой**; общие работы продолжаются для оставшихся команд.
 - Запущенная на воркере работа: воркер узнаёт из ответа на beacon (`cancel: [job_id…]`, §8.3) и прерывает ComfyUI (`/interrupt`). Если результат всё равно придёт — 409 по I4, файл выбрасывается.
 - Флагов отмены, tombstone, TTL нет: отменённость = статус строк.
 
@@ -160,12 +167,12 @@ GPU-нода: worker ──▶ gpu-hub (auth + relay, без состояния)
 1. Поток → `{OUTPUT_DIR}/{build}/.incoming/{job_id}.{attempt}.tmp`, на лету sha256 и размер; fsync. Проверка формата (mp3/png/mp4 — magic bytes, длительность аудио > 0 и не тишина — порог RMS, чтобы «тишина = ready» не повторилась).
 2. `BEGIN; SELECT … FROM gen_jobs WHERE job_id=$1 FOR UPDATE;` статус `running` и `attempt=N`? Нет → `ROLLBACK`, удалить tmp, `409 stale_attempt`.
 3. `rename(tmp → artifactPath(job))` (атомарно, тот же раздел).
-4. `UPDATE gen_jobs SET status='done', result_*`; upsert `scene_assets` (`ready`, `sha256`, `job_id`); переходы §6.3; `NOTIFY gen_progress`.
+4. `UPDATE gen_jobs SET status='done', result_*`; `scene_assets`: для части (чанк, IU, группа) — `metadata.gen_parts[unit_key]`, для склейки — `ready` + `sha256` + `job_id` (§4.3); переходы §6.3; `NOTIFY gen_progress`.
 5. `COMMIT` → `200`.
 
 Сбой между 3 и 5: файл уже новый (это валидный результат этого юнита), статус остался `running` → воркер повторит PUT (идемпотентно: тот же attempt, та же sha → после commit 200) или сработает дедлайн → новая попытка перезапишет файл. Состояния «ready без файла» не бывает: ready пишется только после rename.
 
-Ошибка: `POST /internal/gen/jobs/:job_id/error?attempt=N` `{error_class, reason, comfy_status}` → транзакция: та же проверка attempt → `failed` или `queued` с `not_before = now + backoff` (если `attempt < max_attempts` и класс transient/oom). Классы и паузы — из текущей `gpu-retry-policy` (TRANSIENT 30/120 с ×2, OOM 60 с ×1, DETERMINISTIC 0).
+Ошибка: `POST /internal/gen/jobs/:job_id/error?attempt=N` `{error_class, reason, comfy_status}` → транзакция: та же проверка attempt → `failed` или `queued` с `not_before = now + backoff` (если `attempt < max_attempts` и класс transient/oom). Классы и паузы — из текущей `gpu-retry-policy` (TRANSIENT 30/120 с ×2, OOM 60 с ×1, DETERMINISTIC 0); `timeout` и `worker_offline` — transient; `invalid_result` (тишина, битый файл) — один повтор, затем failed.
 
 Что исчезает: fence, `result-processed` dedup, staging-дерево с `.previous-canonical`, `animastor:result:*`, Phase A recovery, `RESULT_FENCING_MODE`, versioned-IU ветка (если не нужна), base64 и три JSON-хопа.
 
@@ -230,7 +237,7 @@ RETURNING j.*;
 
 **Рестарт backend:** делать нечего — всё в PG; воркеры продолжают, результаты принимаются после старта, сторож доберёт просроченное. (Решено §13.1: продолжать.)
 
-**Прогресс:** `GET /api/v1/book/:bookId/progress` = SQL-агрегат по `gen_jobs` активных команд книги (по команде, слою, сцене: queued / running / done / failed; для «присоединённых» юнитов — по живой работе юнита). SSE `progress-stream` подписан на `LISTEN gen_progress` (payload: `book_id`, `command_id`) и при событии отдаёт свежий агрегат. «Призрачных задач» нет: панель показывает строки таблицы.
+**Прогресс:** `GET /api/v1/book/:bookId/progress` = SQL-агрегат по `gen_command_jobs` ⨝ `gen_jobs` активных команд книги (по команде, слою, сцене: queued / running / done / failed). SSE `progress-stream` подписан на `LISTEN gen_progress` (payload: `book_id`, `command_id`) и при событии отдаёт свежий агрегат. «Призрачных задач» нет: панель показывает строки таблицы.
 
 ## 10. Многопользовательский режим
 
@@ -259,9 +266,6 @@ RETURNING j.*;
 | 3 | Claude Code | video (группы + merge), `generate_all` (задача H, окна VBook как ступень команды) | BA целиком |
 | 4 | Claude Code + кодер | Все книги на v2; удаление `src/legacy/` пакета (старый 0.3.x), кода категории A, генерационных ключей Redis, v2-путей хаба, таблиц §4.3; docs | grep по удалённым ключам/модулям пуст; тесты зелёные |
 
-Ход реализации:
-- **1a** (2026-11-05) — ядро `@animastor/orchestration` 1.0.0 (`src/gen/`, старый код в `src/legacy/`) + схема PG (`gen_commands`, `gen_jobs`, `books.orchestration`, `workers.current_job_id`, `scene_assets.job_id`/`sha256`); без роутов, без выкатки. Backend ветка `orch-v2/1a`, коммит `4aaa791`. Уточнения к ADR — в CHANGELOG 2026-11-05.
-
 Задача G и крупные правки старой оркестрации заморожены (решение 05.11). Хвосты todo, которые закрываются v2: G, этапы 2–3 защиты /regenerate, retry policy соседних job, ложный «онлайн» воркера, `/queue/clear` всех, NULL-дубли `scene_assets`, D (счётчики панели).
 
 ## 13. Решения владельца (2026-11-05)
@@ -269,5 +273,6 @@ RETURNING j.*;
 1. **Рестарт backend:** начатые команды продолжаются (состояние в PG, потерь нет). Режима `interrupted` для команд нет; правило Stage 155 «без автозапусков» соблюдено — после рестарта не создаётся ни одной новой работы, выполняются только уже созданные командой.
 2. **Результат:** воркер загружает файл напрямую на backend по токену задачи (хаб вне пути данных). Ошибку — тоже напрямую тем же токеном.
 3. **Лимиты:** команды не ограничены; private-воркеры без лимита; `shared_limit` только для общих GPU, по умолчанию выключен (§10).
-4. **Проверка тишины** при приёме аудио — сразу на этапе 1.
+4. **Проверка тишины** при приёме аудио — сразу на этапе 1; тишина = `invalid_result`: один повтор, затем failed.
 5. **Имя пакета:** остаётся `@animastor/orchestration`, новая архитектура = мажорная версия **1.0.0**.
+6. **Присоединение (по итогам 1a, 06.11):** явная связь `gen_command_jobs`; стоп команды не трогает работы, нужные другой активной команде. Отмена — по слою. `build_id` и `summary` — колонки. Удаление книги чистит `gen_*`.

@@ -259,6 +259,9 @@ RETURNING j.*;
 | 3 | Claude Code | video (группы + merge), `generate_all` (задача H, окна VBook как ступень команды) | BA целиком |
 | 4 | Claude Code + кодер | Все книги на v2; удаление `src/legacy/` пакета (старый 0.3.x), кода категории A, генерационных ключей Redis, v2-путей хаба, таблиц §4.3; docs | grep по удалённым ключам/модулям пуст; тесты зелёные |
 
+Ход реализации:
+- **1a** (2026-11-05) — ядро `@animastor/orchestration` 1.0.0 (`src/gen/`, старый код в `src/legacy/`) + схема PG (`gen_commands`, `gen_jobs`, `books.orchestration`, `workers.current_job_id`, `scene_assets.job_id`/`sha256`); без роутов, без выкатки. Backend ветка `orch-v2/1a`, коммит `4aaa791`. Уточнения к ADR — в CHANGELOG 2026-11-05.
+
 Задача G и крупные правки старой оркестрации заморожены (решение 05.11). Хвосты todo, которые закрываются v2: G, этапы 2–3 защиты /regenerate, retry policy соседних job, ложный «онлайн» воркера, `/queue/clear` всех, NULL-дубли `scene_assets`, D (счётчики панели).
 
 ## 13. Решения владельца (2026-11-05)

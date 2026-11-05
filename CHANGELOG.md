@@ -6,6 +6,26 @@ All notable changes to Animastor are documented here.
 
 ## 2026-11-05
 
+### Added
+
+- **Оркестрация v2, этап 1a: ядро `@animastor/orchestration` 1.0.0 + схема PG** (backend
+  ветка `orch-v2/1a`, коммит `4aaa791`; в main не влито, роуты не подключены, не выкачено,
+  npm не опубликован). Старый код 0.3.x перенесён без изменений в `src/legacy/`, корень
+  пакета отдаёт тот же API + пространство `gen`: `createCommand`, `cancel`, `claim`,
+  `beacon`, `acceptResult`, `acceptError`, `sweepOnce`/`startSweeper`, `runLocalOnce`,
+  `progress`/`listenProgress`, `migrate`. Схема: `gen_commands`, `gen_jobs` (§4.1–4.2, все
+  индексы и CHECK), `books.orchestration` (`legacy`|`v2`, по умолчанию `legacy`),
+  `workers.current_job_id`, `scene_assets.job_id`/`sha256`. Пять таблиц «никто не пишет»
+  (разведка §3.3) не удалены. Гардрейлы backend PG-2/PG-5 (SQL/DDL только в host) получили
+  узкое исключение для `packages/animastor-orchestration/src/gen/**` по D15.
+  Уточнения к ADR, принятые в реализации (на решение владельца): `input.build_id`
+  обязателен (в `gen_jobs` нет колонки build); части (чанк/IU/группа) пишутся в
+  `scene_assets.metadata.gen_parts`, `ready`+`sha256` — только у `*_merge`; «присоединённые»
+  юниты вычисляются по scope+слоям+времени создания (таблицы связей нет); `retryPolicy`
+  получает номер попытки; `claim` — свой лейн строго первым, флаг `sharePublic`; при
+  `shared_limit` выдача сериализуется advisory-lock; tmp-имя с nonce; `createCommand`
+  отказывает книге не на `v2` (409) и чужому workspace (403). `architecture/ORCHESTRATION_V2.md` §12.
+
 ### Decided
 
 - **Оркестрация генерации v2 (решение D15).** PG (`gen_commands`/`gen_jobs`) — единственная

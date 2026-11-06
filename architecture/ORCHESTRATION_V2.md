@@ -317,6 +317,14 @@ RETURNING j.*;
 - **1a** (2026-11-05) — ядро `@animastor/orchestration` 1.0.0 (`src/gen/`, старый код в `src/legacy/`) + схема PG; без роутов. Backend `orch-v2/1a` `4aaa791`.
 - **1b** (2026-11-06) — доработка ядра (§4.2a `gen_command_jobs`, `build_id`/`layer`/`summary`, отмена по слою, `invalid_result` ×1) + подключение к backend: только аудио, только `books.orchestration='v2'`, мастер-флаг `ORCH_V2_ENABLED` (по умолчанию выкл.); единый предикат изоляции legacy; nginx `/internal/gen/jobs/`. Backend `orch-v2/1b` `7b24fab`, `49e58d7`; deploy `orch-v2/1b` `81dff42`. Без выкатки и npm publish.
 - **1c** (2026-11-06) — хаб v3 relay (`/v3/task/next`, `/v3/beacon`, `BACKEND_INTERNAL_URL`, `/queue/clear` без параметров → 400); воркер 2.4.0 (протокол 3: PUT результата потоком, cancel из beacon, режим `both` с v2); хвосты 1b: `from_current_scene` → `scope.level='scenes'` (миграция 003), `DELETE /book/:id/cache` для v2-книги без хаба; сквозной тест backend + хаб + воркер 2.4.0 + мок ComfyUI. Хаб `orch-v2/1c` `e4e5e67`, воркер `orch-v2/1c` `32ef1e7`, backend `orch-v2/1c` `224fcc2`. Без выкатки, npm publish и релиза GHCR.
+- **1d** (2026-11-06) — **этап 1 выкачен на прод.**
+  - **Код и релиз:** `@animastor/orchestration` 1.0.0 опубликован в npm, backend берёт его из реестра (без `file:`); backend `deploy-1189a31` (`sha256:1e33a5f0…`), gpu-hub `v0.3.0` (`sha256:d0a64209…`, бандл воркера 2.4.0), nginx `/internal/gen/jobs/`; `ORCH_V2_ENABLED=1`, миграции 001–003 применены.
+  - **Книги на v2:** только BA (`ba_1788172242081`); остальные — legacy.
+  - **Проверки на проде:**
+    - legacy до и после включения: заглушка → `ready`, реальный звук;
+    - сценарии §12 на тестовой книге в workspace владельца: сцена, двойной клик, глава, «Стоп» посередине (interrupt на ноде подтверждён логом воркера), рестарт backend посередине, остановка воркера посередине (`worker_offline` → queued → attempt 2 → done);
+    - на BA — «аудио» одной сцены → `ready`.
+  - Тестовая книга и аккаунт удалены. Отчёт: `reports/2026-11-06/orch-v2-1d-release.md`, backend `stage164-prod-release.md`.
 
 Задача G и крупные правки старой оркестрации заморожены (решение 05.11). Хвосты todo, которые закрываются v2: G, этапы 2–3 защиты /regenerate, retry policy соседних job, ложный «онлайн» воркера, `/queue/clear` всех, NULL-дубли `scene_assets`, D (счётчики панели).
 

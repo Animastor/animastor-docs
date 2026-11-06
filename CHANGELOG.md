@@ -6,6 +6,17 @@ All notable changes to Animastor are documented here.
 
 ## 2026-11-06
 
+### Release
+
+- **Оркестрация v2, этап 1 выкачен на прод (1d).**
+  - **Пакет:** `@animastor/orchestration` 1.0.0 в npm (shasum `78037015…ac18`); backend `^1.0.0` из реестра, `.npmrc` удалён.
+  - **backend** `deploy-1189a31` `sha256:1e33a5f0…`, откат — `c0abc8ea…`.
+  - **gpu-hub** `v0.3.0` `sha256:d0a64209…`: бандл 2.4.0, `/v3` relay, `BACKEND_INTERNAL_URL`, `/queue/clear` без scope → 400; откат — `v0.2.9` `6b84cc10…`.
+  - **nginx:** `/internal/gen/jobs/` открыт, прочие `/internal/` → 404.
+  - **Включение v2:** `ORCH_V2_ENABLED=1` (+ новый `ORCH_V2_UPLOAD_SECRET` в `.env`); на v2 переключена BA (`ba_1788172242081`), остальные книги — legacy.
+  - **Проверки:** сценарии ADR §12 a–f на тестовой книге (удалена), «аудио» сцены на BA, контроль legacy до и после включения — `reports/2026-11-06/orch-v2-1d-release.md`.
+- **Fix (legacy):** `window-generator.cjs` — `let chunkCount = 0;` был внутри строки-комментария (с `779cc3e`), из-за чего у следующего окна legacy-книги не создавались заглушки и счётчики сцен.
+
 ### Feat
 
 - **Скрипт снимка исходников `scripts/source-snapshot.sh` (репозиторий `animastor-deploy`).**

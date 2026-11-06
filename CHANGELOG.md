@@ -21,7 +21,63 @@ All notable changes to Animastor are documented here.
   Это не замена `backup.sh` — без git-истории; полная история в ночных git bundle.
   Документация: `docs/BACKUP.md` §8, `prod/agents/AGENTS.md`.
 
+### Added
+
+- **Оркестрация v2, этап 1c: хаб v3 (relay), воркер 2.4.0 (протокол 3 + совместимость с v2), хвосты 1b**
+  (хаб `orch-v2/1c` `e4e5e67`, воркер `orch-v2/1c` `32ef1e7`, backend `orch-v2/1c` `224fcc2`; не влито,
+  не выкачено, npm не опубликован, релиза GHCR нет). ADR `architecture/ORCHESTRATION_V2.md` заменён
+  версией владельца 06.11 (sha256 `edfd41e4…30b8`, API `generate` §11, решения §13 п.7–8); поверх —
+  «как сделано» в §8 и отметка 1c в §12.
+  - **Хаб.** `GET /v3/task/next` и `POST /v3/beacon` — stateless relay в backend
+    `/internal/gen/claim|beacon` (новый env `BACKEND_INTERNAL_URL`, таймаут 10 с, без своих повторов;
+    backend недоступен → 503). На v3-пути единственная запись в Redis — собственный heartbeat-ключ
+    хаба на beacon. `DELETE /queue/clear` без `book_id` / `dispatch_id` / `workspace_id` → `400`:
+    полная очистка удалена.
+  - **Воркер 2.4.0.** За итерацию — v3, затем один v2-pop (`WORKER_PROTOCOL=both|v2only`).
+    Результат — `PUT upload_url` потоком (без base64, до 5 попыток при сети/5xx, 409/401 → бросить),
+    ошибка — `POST error_url`. Beacon v3 раз в 10 с; отмена → ComfyUI `/interrupt`, без отправки.
+    Свой таймаут только прерывает ComfyUI (`error_class=timeout`).
+  - **Backend.** `from_current_scene` для v2-книги → `scope.level='scenes'` (порядок книги, от текущей
+    сцены до конца, как legacy `scopeBounds`; миграция ядра 003). `DELETE /book/:id/cache` для
+    v2-книги не вызывает хаб, работа книги отменяется в ядре.
+  - Профильные документы: `architecture/GPU_HUB_CONTRACT.md` (§3 — 16 маршрутов, §8.5, §12 env, новый
+    §16 «Protocol 3 relay»), `architecture/JOB_PROTOCOL_V2.md` §1 (протокол 3 рядом с v2).
+
+- **Оркестрация v2, этап 1b: аудио на ядре `gen` для книг `books.orchestration='v2'`** (backend
+  `orch-v2/1b` `7b24fab` + `49e58d7`, deploy `orch-v2/1b` `81dff42`; не влито, не выкачено, npm не
+  опубликован). Новая редакция ADR `architecture/ORCHESTRATION_V2.md` положена как приложена
+  (sha256 `beb89328…e828`); §7–§8 дополнены контрактом `/internal/gen/*`, §12 — ходом реализации.
+  Ядро: `gen_command_jobs` (присоединение — явной связью, прогресс и завершение — только по ней),
+  `gen_jobs.build_id`/`layer`, `gen_commands.summary`, `cancel({bookId, layer})`, стоп команды не
+  трогает работы другой активной команды, `invalid_result` — один повтор. Backend: мастер-флаг
+  `ORCH_V2_ENABLED` (выкл. по умолчанию; нужен `ORCH_V2_UPLOAD_SECRET` и ffmpeg), порты аудио
+  поверх существующего кода (тот же workflow, что старый путь, байт-в-байт), `/regenerate`
+  (image/video → 409 `v2_layer_not_supported_yet`), `cancel-generation`, `cancel-worker`,
+  `PUT layer-config`, `progress-panel` в прежнем формате ответа (фронты без изменений),
+  удаление книги чистит `gen_*`; legacy не трогает v2-книги (единый предикат, fail-closed).
+  Переключение книги: `UPDATE books SET orchestration='v2' WHERE book_id=…` (см. отчёт этапа).
+
 ## 2026-11-05
+
+### Added
+
+- **Оркестрация v2, этап 1a: ядро `@animastor/orchestration` 1.0.0 + схема PG** (backend
+  ветка `orch-v2/1a`, коммит `4aaa791`; в main не влито, роуты не подключены, не выкачено,
+  npm не опубликован). Старый код 0.3.x перенесён без изменений в `src/legacy/`, корень
+  пакета отдаёт тот же API + пространство `gen`: `createCommand`, `cancel`, `claim`,
+  `beacon`, `acceptResult`, `acceptError`, `sweepOnce`/`startSweeper`, `runLocalOnce`,
+  `progress`/`listenProgress`, `migrate`. Схема: `gen_commands`, `gen_jobs` (§4.1–4.2, все
+  индексы и CHECK), `books.orchestration` (`legacy`|`v2`, по умолчанию `legacy`),
+  `workers.current_job_id`, `scene_assets.job_id`/`sha256`. Пять таблиц «никто не пишет»
+  (разведка §3.3) не удалены. Гардрейлы backend PG-2/PG-5 (SQL/DDL только в host) получили
+  узкое исключение для `packages/animastor-orchestration/src/gen/**` по D15.
+  Уточнения к ADR, принятые в реализации (на решение владельца): `input.build_id`
+  обязателен (в `gen_jobs` нет колонки build); части (чанк/IU/группа) пишутся в
+  `scene_assets.metadata.gen_parts`, `ready`+`sha256` — только у `*_merge`; «присоединённые»
+  юниты вычисляются по scope+слоям+времени создания (таблицы связей нет); `retryPolicy`
+  получает номер попытки; `claim` — свой лейн строго первым, флаг `sharePublic`; при
+  `shared_limit` выдача сериализуется advisory-lock; tmp-имя с nonce; `createCommand`
+  отказывает книге не на `v2` (409) и чужому workspace (403). `architecture/ORCHESTRATION_V2.md` §12.
 
 ### Decided
 

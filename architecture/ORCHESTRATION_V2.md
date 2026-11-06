@@ -256,20 +256,42 @@ RETURNING j.*;
 - Приватные воркеры видят только свою полосу (как сейчас). Нет операций без фильтра по книге или команде.
 - Нагрузка: 100 пользователей × книги по сотням сцен — сотни тысяч строк, единицы переходов в секунду; claim — индексный запрос. Масштаб упирается в GPU и диск, не в оркестрацию.
 
-## 11. Фронты (web + Android, паритет в той же задаче)
+## 11. API генерации и фронты (web + Android, паритет в той же задаче)
 
-- `/regenerate` (и `/generate`): отправлять `client_action_id`; читать `command_id`, `summary`.
-- Прогресс: новый формат агрегата (по команде и слою). Кнопка «Стоп» — по книге (как сейчас) и по команде (новое).
-- `layer-config`: тот же контракт, хранилище PG.
-- Поля, которые фронты читают и которых backend не отдаёт (`build_id` из /regenerate), — убрать.
+Решение владельца 06.11: один глагол `generate` с явным режимом вместо пары generate/regenerate (граница «новое / повторное» размыта: в одном scope часть готова, часть нет).
+
+### 11.1 Целевые эндпоинты (этап 2)
+
+| Метод и путь | Тело | Что делает | Заменяет |
+|---|---|---|---|
+| `POST /api/v1/book/:bookId/generate` | `{scope, layers, mode: "missing" \| "all", client_action_id}` | создаёт команду (§6.1). `missing` (по умолчанию) — только отсутствующее или устаревшее по хэшу контента; `all` — всё в scope (`force`). Ответ `{command_id, existing, summary}` | `/regenerate` (`rebuild_all` → `mode:"all"`) |
+| `POST /api/v1/book/:bookId/generate/stop` | `{command_id}` \| `{layer}` \| `{}` | стоп команды / слоя / всего по книге (§6.4) | `cancel-worker`, `cancel-generation` |
+| `GET /api/v1/book/:bookId/generate/progress` | — | агрегат §9: команды × слои × сцены | `progress-panel` |
+| `GET /api/v1/book/:bookId/generate/stream` | — | SSE по `gen_progress` | `progress-stream` |
+| `GET` / `PUT /api/v1/book/:bookId/layer-config` | как сейчас | хранилище — PG (`book_layer_config`) | — |
+
+`scope`: `{level: "book" | "chapter" | "scenes" | "scene" | "unit", chapter_id?, scene_ids?, scene_id?, unit_key?}`; «с текущей сцены до конца» фронт или backend разворачивает в `scenes` (этап 1c). `layers`: `audio`, `image`, `video`; на этапе 3 добавляется `vbook` (задача H: VBook-окно как ступень той же команды; `bootstrap` / `bootstrap-next-window` становятся внутренними).
+
+### 11.2 Фронты
+
+- Две кнопки вместо одной: «Сгенерировать недостающее» (`mode:"missing"`) и «Перегенерировать» (`mode:"all"`, с подтверждением для scope шире сцены).
+- `client_action_id` на каждый клик; читать `command_id`, `summary`; поле `build_id` из ответа больше не читать.
+- Прогресс — новый формат (по команде и слою); «Стоп» — по команде (новое), по слою и по книге.
+- Android: удалить мёртвые Retrofit-декларации (`regenerateBook` с `new_book`, вызовы §11.3).
+
+### 11.3 Миграция и удаление
+
+- Этап 2: новые эндпоинты; `/regenerate` — синоним `generate` (`rebuild_all:true` → `all`, иначе `missing`), `cancel-worker` / `cancel-generation` / `progress-panel` / `progress-stream` — синонимы новых для v2-книг; фронты переходят на новые.
+- Этап 3: `vbook` как слой `generate`.
+- Этап 4: удалить синонимы и эндпоинты без вызовов из фронтов (разведка §7.3): `POST /api/v1/generate`, `POST /book/:id/generate-next`, `POST /book/load-vbook`, `POST /book/import-txt`, `POST /book/:id/resume-bootstrap`, `POST /book/:id/trigger-next-window`, `POST /book/:id/recover-placeholders`, `GET /book/:id/generation-state`, `GET /worker/status` — перед удалением повторить grep по web, Android и docs. Импорт остаётся единым `POST /book/import`.
 
 ## 12. Этапы
 
 | Этап | Кто | Что | Готово, когда |
 |---|---|---|---|
 | 1 | Claude Code | `@animastor/orchestration` 1.0.0 (новый код; старый — в `src/legacy/` до этапа 4), таблицы `gen_commands`/`gen_jobs`, `book_layer_config`; claim/accept/sweeper/progress; backend `/internal/gen/*`; хаб v3 relay; воркер 2.4.0 (pull v3, PUT результата, cancel из beacon). **Только аудио**, книга переключается флагом `books.orchestration='v2'`. Старая оркестрация для такой книги аудио не трогает (гейт в scheduler/reconcile по флагу). | BA на v2: «аудио» одной сцены, всей главы, Стоп посередине, рестарт backend посередине, выключение ноды посередине, двойной клик — всё по ожиданиям; тесты пакета на чистом PG. |
-| 2 | Claude Code | image (IU), фронты (паритет), перенос layer-config, удаление 5 мёртвых таблиц | BA: аудио + картинки по команде |
-| 3 | Claude Code | video (группы + merge), `generate_all` (задача H, окна VBook как ступень команды) | BA целиком |
+| 2 | Claude Code | image (IU), API §11 + фронты (паритет), перенос layer-config, удаление 5 мёртвых таблиц | BA: аудио + картинки по команде |
+| 3 | Claude Code | video (группы + merge), слой `vbook` в `generate` (задача H, окна VBook как ступень команды) | BA целиком |
 | 4 | Claude Code + кодер | Все книги на v2; удаление `src/legacy/` пакета (старый 0.3.x), кода категории A, генерационных ключей Redis, v2-путей хаба, таблиц §4.3; docs | grep по удалённым ключам/модулям пуст; тесты зелёные |
 
 Ход реализации:
@@ -286,3 +308,5 @@ RETURNING j.*;
 4. **Проверка тишины** при приёме аудио — сразу на этапе 1; тишина = `invalid_result`: один повтор, затем failed.
 5. **Имя пакета:** остаётся `@animastor/orchestration`, новая архитектура = мажорная версия **1.0.0**.
 6. **Присоединение (по итогам 1a, 06.11):** явная связь `gen_command_jobs`; стоп команды не трогает работы, нужные другой активной команде. Отмена — по слою. `build_id` и `summary` — колонки. Удаление книги чистит `gen_*`.
+7. **API (06.11):** один эндпоинт `generate` с `mode: missing | all` вместо generate / regenerate; стоп и прогресс — под `/generate/*`; неиспользуемые эндпоинты удаляются на этапе 4 (§11).
+8. **По итогам 1b (06.11):** `from_current_scene` разворачивается в `scope.level='scenes'` (1c); хэш «готово для текущего контента» = sha256 снимка workflow — принят, одна пересборка legacy-аудио допустима; `rebuild_all → force` остаётся до §11 (этап 2); чанки после склейки не удаляются (нужны для перегенерации одного чанка); `DELETE /book/:id/cache` для v2-книги хаб не вызывает (1c).

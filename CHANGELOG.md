@@ -6,6 +6,13 @@ All notable changes to Animastor are documented here.
 
 ## 2026-11-06
 
+### Fixed
+
+- **«Залипание» аккаунта между `app.` и `admin.` (web-auth sticky).** Ветки `fix/auth-sticky` в `animastor-backend` и `animastor-web`; в `main` не влито, не выкачено. Причина — старые host-only cookie `animastor_sid`/`animastor_gid` (до `COOKIE_DOMAIN`), которые `Set-Cookie` с `Domain=` не удаляет; чтение только первой cookie из заголовка; кэширование `/auth/me` и `/api/v1/books` браузером.
+  - **backend:** login/logout дополнительно шлют host-only очистку `animastor_sid`/`animastor_gid` (`Max-Age=0`, без `Domain=`, только при заданном `COOKIE_DOMAIN`); `authContext` перебирает все дубли cookie и берёт первую живую (неревокированную) сессию, один warning `duplicate session cookies` на запрос; `Cache-Control: no-store` на `/api/v1/auth/*` и `/api/v1/books`.
+  - **`@animastor/auth`:** `parseCookieHeaders` и `clearHostOnlyCookieHeaders` в cookie-грамматике. Пакет нужно опубликовать (и backend перевести на новую версию) до сборки образа — backend вызывает новые методы.
+  - **web:** `fetchMe()` читает `/auth/me` с `cache: 'no-store'`; `logout()` ждёт `fetchMe()` вместо только локального сброса. Admin использует тот же store — отдельных правок не требует.
+
 ### Release
 
 - **Оркестрация v2, этап 1 выкачен на прод (1d).**

@@ -40,6 +40,13 @@ recovery keys, workspace switcher, anonymous/guest workspaces, billing, RBAC.
   `animastor.org` + application `app.animastor.org` — same backend, same
   session store, no second auth system). The value is charset-validated
   before it is written into `Set-Cookie`.
+- **Stale host-only cleanup (2026-11-06).** Cookies written before
+  `COOKIE_DOMAIN` existed live as host-only records next to the `Domain=`
+  one; a `Domain=` clear cannot delete them. Every successful login and
+  every logout therefore also emits host-only clears
+  (`animastor_sid=;` / `animastor_gid=;`, `Max-Age=0`, no `Domain=`).
+  Without a configured `COOKIE_DOMAIN` nothing extra is emitted — the
+  single header is already host-only.
 - **Raw tokens never stored** — only SHA-256 of the secret
   (`token_hash`, indexed). Session id + hash are generated together (never
   drift); a leaked DB yields no usable tokens.
@@ -73,6 +80,13 @@ request → cookie → sessions lookup (PG) → users → workspaces
 
 - `authContext` is async now; no valid cookie ⇒ `req.user = null` and the
   request proceeds exactly as pre-auth (no global `requireAuth` anywhere).
+- **Duplicate cookies (2026-11-06).** A host-only and a `Domain=` cookie
+  with the same name are separate browser records sent in one header, so the
+  middleware tries EVERY `animastor_sid` value in header order and keeps the
+  first live (non-revoked) session; same for `animastor_gid`. A single
+  `duplicate session cookies` warning is logged per request. Previously only
+  the first value was read, which is how a revoked leftover could pin the
+  identity.
 - Transient PG failures during session lookup degrade to anonymous.
 - `checkBookAccess`: pre-auth allows all (compat); authenticated requires
   workspace membership (`books.workspace_id` → `workspace_members`), with
@@ -106,7 +120,12 @@ workspace and keep working.
 ## 4. Frontend
 
 - `state/authStore.ts` — signals over `/auth/me`; localStorage is never
-  auth truth (cookie only).
+  auth truth (cookie only). `fetchMe()` requests `/auth/me` with
+  `{ cache: 'no-store' }`, and `logout()` awaits `fetchMe()` after the
+  server call, so client state always reflects a fresh server answer.
+- **Cache headers (2026-11-06).** `/api/v1/auth/*` and `GET /api/v1/books`
+  answer `Cache-Control: no-store`; identity state must never be replayed
+  from the browser HTTP cache after login/logout.
 - `features/auth/UserMenu.tsx` — user-circle button in header/toolbar
   (concept §19, left of Settings): `Anonymous` → Login/Create account;
   logged in → username + Personal workspace + Sign out. Minimal dialog,

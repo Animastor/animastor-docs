@@ -217,9 +217,18 @@ RETURNING j.*;
 
 **Внутренний контракт выдачи (этап 1b).** `POST backend /internal/gen/claim` — заголовок `x-api-key` = `GPU_HUB_API_KEY` **обязателен** (без ключа или при не заданном ключе — `401`); тело `{worker_id, worker_type?}`. Тип, режим, workspace и политика шаринга воркера берутся из PG (`workers` + `share_policies`), а не из тела: users-политика → `policy_ids`, public-политика private-воркера → «одалживание» system. Ответ `{task: null}` или `{task: {job_id, attempt, kind, book_id, chapter_id, scene_id, unit_key, params, timeout_ms, deadline, upload_token, upload_url, error_url, job_type, protocol_version: 3}}`. Снаружи (nginx) `/internal/gen/claim` и `/internal/gen/beacon` недоступны — хаб ходит в docker-сети; публичен только `/internal/gen/jobs/`.
 
+**Как сделано (этап 1c, хаб `orch-v2/1c`).** `GET hub /v3/task/next?type=…` — та же проверка Bearer-токена воркера по зеркалу `animastor:worker-auth`; `type` ≠ типу учётных данных → `409 worker_type_mismatch`. Затем один `POST {BACKEND_INTERNAL_URL}/internal/gen/claim {worker_id, worker_type}` с `x-api-key` (`GPU_HUB_API_KEY`). `mode` / `workspace_id` / `policy_ids` хаб не шлёт: backend берёт их из PG (контракт выше). Ответ backend уходит воркеру как есть (статус и тело). Исключение: `401` backend (не принят ключ хаба) → воркеру `502 backend_rejected_hub_key`, это ошибка настройки хаба, а не воркера. Таймаут relay 10 с, своих повторов у хаба нет; backend недоступен или таймаут → `503 backend_unavailable` (воркер ждёт и повторяет). На этом пути хаб ничего не пишет в Redis. `BACKEND_INTERNAL_URL` — новый env хаба (docker-сеть, напр. `http://animastor-backend:3000`); не задан → `/v3/*` отвечают `503 v3_not_configured`; не задан `GPU_HUB_API_KEY` → `503 hub_api_key_not_configured`.
+
 ### 8.2 Результат и ошибка
 
 Воркер: `PUT upload_url` (поток файла из `COMFY_OUTPUT_DIR`, без base64), повтор с backoff до 5 раз при сетевой ошибке / 5xx; `409` → прекратить. Ошибка — `POST /internal/gen/jobs/:id/error` прямо на backend тем же токеном (§13.2); хаб в пути результата и ошибки не участвует.
+
+**Как сделано (этап 1c, воркер 2.4.0).**
+- **Результат.** `PUT upload_url` потоком: файл из `COMFY_OUTPUT_DIR`, если его нет на диске — поток ComfyUI `/view`. `Content-Type` — по расширению, `Content-Length` — размер файла, `Authorization: Bearer upload_token`.
+- **Повторы доставки.** При сетевой ошибке / 5xx — до 5 попыток всего, пауза 1 → 2 → 4 → 8 с. `409` / `401` и любой другой 4xx → доставка прекращается, работа бросается (решение уже принял backend).
+- **Ошибка выполнения.** `POST error_url {error_class, reason, comfy_status}` тем же токеном, с теми же повторами. Классы — как у воркера 2.3.0 (`deterministic` / `transient` / `oom`, без класса = unknown) плюс `timeout`.
+- **Таймаут (I3).** `timeout_ms` из задачи только прерывает ComfyUI (`/interrupt` с `prompt_id`) и даёт `error_class=timeout`; статус работы воркер сам не меняет.
+- **Входные файлы.** Ссылки `…/input/:name` на этапе 1 не реализованы: у аудио входных файлов нет.
 
 ### 8.3 Живость
 
@@ -227,11 +236,21 @@ RETURNING j.*;
 
 **Внутренний контракт beacon (этап 1b).** `POST backend /internal/gen/beacon` (`x-api-key` обязателен) `{worker_id, current_job_id?}` → `{cancel: [job_id…]}`: отменённые работы воркера за последний час + `current_job_id`, если она у этого воркера уже не `running` (переочередь сторожем, отдана другому).
 
+**Как сделано (этап 1c).** Воркер 2.4.0 шлёт `POST hub /v3/beacon {gpu, vram, version, image_tag, current_job_id}` раз в 10 с (`BEACON_INTERVAL_MS`) рядом с прежним `/beacon`. Сразу после выдачи задачи — внеочередной beacon. Хаб пересылает `{worker_id (из токена), current_job_id}` на `/internal/gen/beacon` и отдаёт `{cancel}` воркеру. `current_job_id` ∈ `cancel` → ComfyUI `/interrupt` (с `prompt_id`; если prompt ещё не создан — сразу после ответа `/prompt`), результат не отправляется, ошибка тоже, воркер переходит к следующей задаче.
+
+Отступление от «Redis-ключ heartbeat не нужен» (по заданию 1c): на `/v3/beacon` хаб обновляет **свой** ключ `animastor:worker:heartbeat:{type}:{id}` (EX 30, та же форма, что у `/beacon`, плюс `protocol_version: 3` и `current_job_id`). Его читают UI-статус и legacy-подсчёт воркеров. Это единственная запись в Redis на v3-пути. Продления по записи `running` на v3-пути нет: записи `running` там не существует. Реестр `animastor:gpu-hub:workers` v3-beacon не трогает: по нему v2-выдача сверяет `protocol_version=2`.
+
 ### 8.4 Хаб v3 — что остаётся
 
 Аутентификация воркеров, `/installer`, бандл воркера, `/workflow/:id`, два relay-эндпоинта (`next`, `beacon`). Удаляются: `POST /task`, очереди и полосы в Redis, `processing`, `running`, dead-letter, dedup, `result:*`, `DELETE /queue/clear` (особенно полная очистка), сторож таймаутов и orphan-requeue. Прямые правки очередей хаба из backend (`worker-routes.cjs:146–165`) уходят вместе с очередями.
 
 Совместимость: v2-эндпоинты хаба живут, пока есть воркеры 2.x; v3 — новые пути. Воркер 2.4.0 = v3 (протокол 3); тип ноды переводится на v3 переустановкой однострочником.
+
+**Как сделано (этап 1c).**
+- **v2-путь хаба.** Не менялся, кроме одного: `DELETE /queue/clear` без `book_id` / `dispatch_id` / `workspace_id` (пустые значения считаются отсутствующими) → `400 scope_required` до любого обращения к Redis. Ветка полной очистки удалена (I7). Все вызывающие в backend передают `book_id` или `dispatch_id`. Остальное (`/task`, очереди, `running`, сторож, `/queue/clear` с параметрами) удаляется на этапе 4.
+- **Совместимость воркера 2.4.0** (`WORKER_PROTOCOL=both`, по умолчанию). За итерацию: `/v3/task/next`; `{task:null}` / 404 (старый хаб) / 503 (backend выкл. или недоступен) / сетевая ошибка → один прежний v2-pop `/task/next` (обработка 2.3.0 без изменений). Пауза 2 → 15 с — только когда пусто в обоих.
+- **Приоритет.** v3 имеет приоритет: пока в v3 есть работа, v2-задачи берутся только в промежутках, когда v3 пуст.
+- **`WORKER_PROTOCOL=v2only`.** Ровно цикл 2.3.0, без вызовов `/v3`.
 
 ## 9. Сторож и прогресс
 
@@ -297,6 +316,7 @@ RETURNING j.*;
 Ход реализации:
 - **1a** (2026-11-05) — ядро `@animastor/orchestration` 1.0.0 (`src/gen/`, старый код в `src/legacy/`) + схема PG; без роутов. Backend `orch-v2/1a` `4aaa791`.
 - **1b** (2026-11-06) — доработка ядра (§4.2a `gen_command_jobs`, `build_id`/`layer`/`summary`, отмена по слою, `invalid_result` ×1) + подключение к backend: только аудио, только `books.orchestration='v2'`, мастер-флаг `ORCH_V2_ENABLED` (по умолчанию выкл.); единый предикат изоляции legacy; nginx `/internal/gen/jobs/`. Backend `orch-v2/1b` `7b24fab`, `49e58d7`; deploy `orch-v2/1b` `81dff42`. Без выкатки и npm publish.
+- **1c** (2026-11-06) — хаб v3 relay (`/v3/task/next`, `/v3/beacon`, `BACKEND_INTERNAL_URL`, `/queue/clear` без параметров → 400); воркер 2.4.0 (протокол 3: PUT результата потоком, cancel из beacon, режим `both` с v2); хвосты 1b: `from_current_scene` → `scope.level='scenes'` (миграция 003), `DELETE /book/:id/cache` для v2-книги без хаба; сквозной тест backend + хаб + воркер 2.4.0 + мок ComfyUI. Хаб `orch-v2/1c` `e4e5e67`, воркер `orch-v2/1c` `32ef1e7`, backend `orch-v2/1c` `224fcc2`. Без выкатки, npm publish и релиза GHCR.
 
 Задача G и крупные правки старой оркестрации заморожены (решение 05.11). Хвосты todo, которые закрываются v2: G, этапы 2–3 защиты /regenerate, retry policy соседних job, ложный «онлайн» воркера, `/queue/clear` всех, NULL-дубли `scene_assets`, D (счётчики панели).
 

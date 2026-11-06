@@ -47,6 +47,14 @@ Beacon-канал (`POST /beacon`, worker → hub) входит в проток�
 hub ↔ backend (key families, `drainPolicyLane`, registry `hdel`) в этот
 контракт НЕ входит — это отдельный (hub-extraction) scope.
 
+Рядом работает **протокол 3** (оркестрация v2, книги `books.orchestration='v2'`,
+`architecture/ORCHESTRATION_V2.md` §8, этап 1c): `GET /v3/task/next` и
+`POST /v3/beacon` хаба — stateless relay в backend `/internal/gen/*`; результат
+(`PUT upload_url`, поток) и ошибка (`POST error_url`) идут от воркера прямо в
+backend, мимо хаба. Протокол 2 этим не меняется. Воркер 2.4.0 обслуживает оба
+(`WORKER_PROTOCOL=both`: за итерацию v3, затем один v2-pop; `v2only` — только
+протокол 2), пока есть v2-задачи (до этапа 4).
+
 ## 2. Source of truth (canonical implementation)
 
 **`contracts/src/job-protocol-v2.js` (npm-пакет `@animastor/contracts`) —

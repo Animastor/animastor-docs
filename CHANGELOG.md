@@ -8,6 +8,26 @@ All notable changes to Animastor are documented here.
 
 ### Added
 
+- **Оркестрация v2, этап 1c: хаб v3 (relay), воркер 2.4.0 (протокол 3 + совместимость с v2), хвосты 1b**
+  (хаб `orch-v2/1c` `e4e5e67`, воркер `orch-v2/1c` `32ef1e7`, backend `orch-v2/1c` `224fcc2`; не влито,
+  не выкачено, npm не опубликован, релиза GHCR нет). ADR `architecture/ORCHESTRATION_V2.md` заменён
+  версией владельца 06.11 (sha256 `edfd41e4…30b8`, API `generate` §11, решения §13 п.7–8); поверх —
+  «как сделано» в §8 и отметка 1c в §12.
+  - **Хаб.** `GET /v3/task/next` и `POST /v3/beacon` — stateless relay в backend
+    `/internal/gen/claim|beacon` (новый env `BACKEND_INTERNAL_URL`, таймаут 10 с, без своих повторов;
+    backend недоступен → 503). На v3-пути единственная запись в Redis — собственный heartbeat-ключ
+    хаба на beacon. `DELETE /queue/clear` без `book_id` / `dispatch_id` / `workspace_id` → `400`:
+    полная очистка удалена.
+  - **Воркер 2.4.0.** За итерацию — v3, затем один v2-pop (`WORKER_PROTOCOL=both|v2only`).
+    Результат — `PUT upload_url` потоком (без base64, до 5 попыток при сети/5xx, 409/401 → бросить),
+    ошибка — `POST error_url`. Beacon v3 раз в 10 с; отмена → ComfyUI `/interrupt`, без отправки.
+    Свой таймаут только прерывает ComfyUI (`error_class=timeout`).
+  - **Backend.** `from_current_scene` для v2-книги → `scope.level='scenes'` (порядок книги, от текущей
+    сцены до конца, как legacy `scopeBounds`; миграция ядра 003). `DELETE /book/:id/cache` для
+    v2-книги не вызывает хаб, работа книги отменяется в ядре.
+  - Профильные документы: `architecture/GPU_HUB_CONTRACT.md` (§3 — 16 маршрутов, §8.5, §12 env, новый
+    §16 «Protocol 3 relay»), `architecture/JOB_PROTOCOL_V2.md` §1 (протокол 3 рядом с v2).
+
 - **Оркестрация v2, этап 1b: аудио на ядре `gen` для книг `books.orchestration='v2'`** (backend
   `orch-v2/1b` `7b24fab` + `49e58d7`, deploy `orch-v2/1b` `81dff42`; не влито, не выкачено, npm не
   опубликован). Новая редакция ADR `architecture/ORCHESTRATION_V2.md` положена как приложена

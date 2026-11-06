@@ -95,9 +95,12 @@ base64 asset transport (recorded debt, Phase 10 audit §7).
 
 ## 3. HTTP route surface (exact set)
 
-`[NORMATIVE — FROZEN]` The route set is EXACTLY the 14 routes below. Removal
-or addition requires a deliberate guard update
-(phase10a-gpu-hub-contract-freeze.test.js pins set equality).
+`[NORMATIVE — FROZEN]` The route set is EXACTLY the 16 routes below (14 of
+protocol 2 + 2 protocol-3 relay routes added in ORCHESTRATION_V2 stage 1c).
+Removal or addition requires a deliberate guard update (the hub package
+`tests/run-all.cjs` §5 pins the 16-route set; the backend-side
+phase10a-gpu-hub-contract-freeze.test.js pins the set of the npm
+`@animastor/gpu-hub` it installs and moves with the next hub publish).
 
 | # | Method | Path | Auth plane | Consumer | Reference (gpu-hub.js) |
 |---|---|---|---|---|---|
@@ -114,7 +117,9 @@ or addition requires a deliberate guard update
 | 11 | GET | `/installer/bundle` | none | bootstrap launcher | :1753 |
 | 12 | GET | `/installer/sha256` | none | setup-contract probe | :1770 |
 | 13 | GET | `/health` | none | ops | :1789 |
-| 14 | DELETE | `/queue/clear` | Backend (x-api-key) | dispatch-engine, book routes | :1816 |
+| 14 | DELETE | `/queue/clear` | Backend (x-api-key) | dispatch-engine, book routes | :1816 — scoped only since stage 1c (§8.5) |
+| 15 | GET | `/v3/task/next` | Worker (Bearer) → backend relay | worker ≥ 2.4.0 | §16 |
+| 16 | POST | `/v3/beacon` | Worker (Bearer) → backend relay | worker ≥ 2.4.0 | §16 |
 
 `[NORMATIVE — FROZEN]` `/worker-source` (deprecated) MUST remain until a
 coordinated deprecation: the installer engine still uses it as a fallback
@@ -383,8 +388,15 @@ Long-term replacement is the Phase 5/12 hub-API item; NOT part of 10A.
 ### 8.5 Cancellation flow (backend → hub)
 
 `[CURRENT BEHAVIOR]` Backend cancels via `DELETE /queue/clear?dispatch_id=`
-(dispatch-engine), `?book_id=` / `?workspace_id=` (book routes, guest purge)
-or unscoped (full wipe).
+(dispatch-engine), `?book_id=` / `?workspace_id=` (book routes, guest purge).
+
+`[NORMATIVE]` (ORCHESTRATION_V2 stage 1c, I7): the unscoped full wipe is
+REMOVED — `DELETE /queue/clear` without `book_id` / `dispatch_id` /
+`workspace_id` (empty values count as absent) answers `400 scope_required`
+before touching Redis. Every backend caller passes `book_id` or
+`dispatch_id` (cache-routes, generation-routes, book-deletion,
+dispatch-engine). Books on orchestration v2 never reach the hub at all
+(cancel-generation, cache clear, deletion go through the gen core).
 
 `[NORMATIVE]` (2026-11-04, `reports/2026-11-04/regenerate-sweep-fix.md`): a
 book-wide `?book_id=` clear removes EVERY queued / running / result entry of
@@ -607,6 +619,7 @@ frozen):
 | `REDIS_URL` | `redis://animastor-redis:6379` | Redis connection |
 | `PORT` | `5000` | HTTP listen port |
 | `BACKEND_URL` | `http://animastor-backend:3000` | callback base |
+| `BACKEND_INTERNAL_URL` | null | protocol-3 relay target inside the docker network (e.g. `http://animastor-backend:3000`, the backend's own port — NOT through nginx); unset → `/v3/*` answer `503 v3_not_configured` (stage 1c) |
 | `GPU_HUB_API_KEY` | null | backend-plane key; MUST match the backend compose value; fail-closed when unset |
 | `GPU_HUB_ALLOW_OPEN` | null | dev-only opt-out for the unset key (must NOT be set in production) |
 | `GPU_TIMEOUT_MS` / `GPU_TIMEOUT` | `600000` | per-job/per-GPU hard timeout. INVARIANT: hub `GPU_TIMEOUT_MS` < backend `STALL_FAILSAFE_MS = GPU_TIMEOUT_MS × 3` (runtime-config.js:143-163) |
@@ -726,7 +739,7 @@ mandatory, mirroring the backend container.
 `[NORMATIVE — FROZEN]` Invariants any refactor/extraction (10B–10F) must
 preserve:
 
-1. **Wire:** all 14 routes, all headers (`x-api-key`, `Authorization: Bearer`,
+1. **Wire:** all 16 routes (§3), all headers (`x-api-key`, `Authorization: Bearer`,
    `X-Animastor-*`, `Deprecation`, `Link`), all status codes, all error
    tokens, request/response shapes of §6/§9/§10. No mixed-version rollout of
    Job Protocol v2 — the value changes only via the JOB_PROTOCOL_V2.md §4
@@ -748,3 +761,25 @@ preserve:
 
 Any change to a `[NORMATIVE — FROZEN]` item requires: ADR + coordinated
 rollout + guard updates in the same commit.
+
+---
+
+## 16. Protocol 3 relay (ORCHESTRATION_V2 stage 1c)
+
+`[NORMATIVE]` Normative source: animastor-docs
+`architecture/ORCHESTRATION_V2.md` §8 (contract of `/internal/gen/*` and the
+«как сделано» notes). The hub keeps **no task state** on this path (I6): no
+queue, running record, dedup, result copy or retries of its own.
+
+| Route | Hub does | Backend hop | Answer to the worker |
+|---|---|---|---|
+| `GET /v3/task/next?type=…` | Bearer worker credential (mirror); `type` ≠ credential type → `409 worker_type_mismatch` | `POST {BACKEND_INTERNAL_URL}/internal/gen/claim {worker_id, worker_type}`, `x-api-key` | backend status + body as is (`{task}` / `{task:null}`) |
+| `POST /v3/beacon` | Bearer worker credential; refreshes the hub's own `animastor:worker:heartbeat:{type}:{id}` (EX 30, `/beacon` shape + `protocol_version: 3`, `current_job_id`) | `POST /internal/gen/beacon {worker_id, current_job_id}`, `x-api-key` | backend status + body as is (`{cancel:[…]}`) |
+
+- Identity (`worker_id`, `worker_type`) only from the token; body ids are ignored. Type, mode, workspace and share policy are resolved by the backend from PG.
+- One relay attempt, timeout 10 s (`V3_RELAY_TIMEOUT_MS` config override for tests). Network error / timeout → `503 backend_unavailable`; backend `401` (hub key rejected) → `502 backend_rejected_hub_key`; `BACKEND_INTERNAL_URL` unset → `503 v3_not_configured`; `GPU_HUB_API_KEY` unset → `503 hub_api_key_not_configured`.
+- Redis writes on the v3 path: only the heartbeat key above (UI status + legacy worker counts). `/v3/task/next` writes nothing. The v2 registry `animastor:gpu-hub:workers` is not touched (the v2 pop checks its `protocol_version`).
+- Results and errors do NOT pass the hub: the worker sends `PUT upload_url` / `POST error_url` straight to the backend (public `https://animastor.org/internal/gen/jobs/…`, nginx).
+- Worker ≥ 2.4.0 (`WORKER_PROTOCOL=both`, default) asks `/v3/task/next` first and makes one v2 `/task/next` pop when v3 has nothing / answers 404 / 503; `WORKER_PROTOCOL=v2only` never calls `/v3`.
+- Guard: hub package `tests/v3-relay.cjs` (relay bodies, 503 cases, single attempt, zero Redis writes on next, one heartbeat write on beacon, `/queue/clear` without scope → 400).
+

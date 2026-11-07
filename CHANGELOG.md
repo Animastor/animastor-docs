@@ -4,6 +4,32 @@ All notable changes to Animastor are documented here.
 
 ---
 
+## 2026-11-07
+
+### Feat
+
+- **Оркестрация v2, этап 2a: изображения (IU) на ядре v2** для `books.orchestration='v2'`
+  (backend `orch-v2/2a-image`; не влито, не выкачено, `@animastor/orchestration` 1.1.0 не опубликован).
+  - **Ядро 1.1.0:** проверка PNG при приёме (структура + CRC, размеры > 0, поток пикселей, пустой /
+    однотонный кадр → `invalid_result`: один повтор, затем failed; порог `ORCH_V2_MIN_LUMA_STDDEV`,
+    по умолчанию 2.0); пропуск готового по IU (`part_hash` = sha256 снимка workflow); сцена `image`
+    `ready`, когда приняты все IU сцены; legacy `scene-window` (окно, read-repair chunk-статусов,
+    `generate-next`) не трогает v2-книгу.
+  - **backend:** порты image (`planUnits` / `buildPayload` — тот же workflow, что у legacy, байт-в-байт /
+    `artifactPath` — канонический `…_{unit}.png` / инвалидация превью); `/regenerate` v2-книги принимает
+    `image`, `video` → `summary.skipped_unsupported`; `IU_IMAGE_VERSIONED` → 409 `v2_image_unavailable`.
+  - **Фронты** не менялись: кадры v2-книги отдают прежние эндпоинты чтения (паритет не затронут).
+    `assets-state` (image-счётчики) и `/chunk/:id/image` для v2-книги не обновляются — фронты по ним
+    картинки не показывают; правка — с API §11.
+  - **Хаб и воркер** не менялись (v3-путь типонезависим; сквозной прогон с воркером 2.4.0).
+  - ADR `architecture/ORCHESTRATION_V2.md` §4.3, §6.3, §7, §12 «2a», §13 п.9; разведка
+    `architecture/ORCHESTRATION_V2_RECON_IMAGE.md` (ветка `recon/image-path` влита);
+    `architecture/COMMAND_ONLY_GENERATION.md` (ответ `/regenerate` для v2-книги).
+  - ADR §6.5 / §13 п.10 — видео ждёт картинки (решение для этапа 3).
+  - Отчёт: `reports/2026-11-07/orch-v2-2a-image.md`.
+
+---
+
 ## 2026-11-06
 
 ### Release

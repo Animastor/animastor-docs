@@ -204,13 +204,17 @@ The `animastor-origin` option switches from single-file to bundle endpoint. The 
 
 | Workflow | Manifest SHA256 | Actual SHA256 | Match |
 |----------|----------------|---------------|-------|
-| `img-qwen-image.json` | `fb4c25e5...` | `fb4c25e5...` | ✅ |
+| `img-qwen-image.json` | `d2cb4c4e...` | `d2cb4c4e...` | ✅ |
 | `tts-qwen-narrator.json` | `87180aee...` | `87180aee...` | ✅ |
 | `tts-qwen-dialogue.json` | `7dcdc699...` | `7dcdc699...` | ✅ |
-| `video-ltx-1p.json` | `6ab036e1...` | `6ab036e1...` | ✅ |
-| `video-ltx-2p.json` | `1be44f6f...` | `1be44f6f...` | ✅ |
-| `video-ltx-3p.json` | `ec15a012...` | `ec15a012...` | ✅ |
-| `video-ltx-4p.json` | `acef76b3...` | `acef76b3...` | ✅ |
+| `video-ltx-1p.json` | `b675a572...` | `b675a572...` | ✅ |
+| `video-ltx-2p.json` | `c6bc34f3...` | `c6bc34f3...` | ✅ |
+| `video-ltx-3p.json` | `26692d19...` | `26692d19...` | ✅ |
+| `video-ltx-4p.json` | `8ea650a8...` | `8ea650a8...` | ✅ |
+
+*(пересчёт stage166 A: workflow приведены к манифесту, `baseline_sha256` и `revision`
+`2026.11.07-r1` обновлены по процедуре §4.3; сверка — `backend/tests/gpu-hub-artifacts.test.js`,
+`backend/tests/worker-setup-api.test.js`, `installer/tests/install-manifest.test.js`.)*
 
 ---
 
@@ -221,13 +225,13 @@ The `animastor-origin` option switches from single-file to bundle endpoint. The 
 ```
 Workflow (img-qwen-image.json)
   ├── Referenced by: qwen-image.json manifest (line 294-320)
-  ├── baseline_sha256: fb4c25e5... (verified ✅)
+  ├── baseline_sha256: d2cb4c4e... (verified ✅)
   ├── requirement: optional
   └── Worker version required: ≥ 2.0.0 (from manifest)
 
 Manifest (qwen-image.json)
   ├── manifest_version: 1.0.0 (schema validated)
-  ├── revision: 2026.08.27-r1
+  ├── revision: 2026.11.07-r1
   ├── status: ready
   ├── worker_bundle.min_version: 2.0.0
   └── workflows.policy: editable-baseline

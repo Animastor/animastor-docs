@@ -90,7 +90,7 @@
 
 ### 4.3 Что остаётся и что уходит
 
-- `scene_assets` — остаётся как «что лежит на диске»: пишется только транзакцией приёма (§7) и созданием заглушек при импорте. Добавить `job_id`, `sha256`. Ключ — сцена × тип: `ready` + `sha256` + `job_id` ставятся только склейкой (`audio_merge` / `video_merge`; для картинок — IU-указатель, этап 2); готовые части (чанк, IU, группа) — в `metadata.gen_parts[unit_key]`. Статусы: `placeholder | ready | stale`. Убрать NULL-build дубли (409 строк) миграцией.
+- `scene_assets` — остаётся как «что лежит на диске»: пишется только транзакцией приёма (§7) и созданием заглушек при импорте. Добавить `job_id`, `sha256`. Ключ — сцена × тип: `ready` + `sha256` + `job_id` ставятся только склейкой (`audio_merge` / `video_merge`; для картинок склейки нет — приём IU, закрывающий набор IU сцены, §13 п.9); готовые части (чанк, IU, группа) — в `metadata.gen_parts[unit_key]` (с `part_hash`, если планировщик его дал). Статусы: `placeholder | ready | stale`. Убрать NULL-build дубли (409 строк) миграцией.
 - `layer-config` — переносится из Redis в PG (`book_layer_config`).
 - Удаляются после этапа 4: `generation_tasks`, `asset_states`, `generation_cancellations`, `iu_image_fence_reservations`, `iu_image_pointers` (если versioned IU не включён), `reconciliation_events`; все генерационные ключи Redis (разведка §4.5), кроме pub/sub прогресса — его заменяет PG `LISTEN/NOTIFY` (§9), так что Redis генерации не нужен вовсе.
 - Пять таблиц, в которые никто не пишет (разведка §3.3: `asset_states`, `cache_entries`, `asset_dependencies`, `reconciliation_events`, `output_manifests`), — удалить на этапе 2.
@@ -147,7 +147,7 @@ GPU-нода: worker ──▶ gpu-hub (auth + relay, без состояния)
 |---|---|
 | последний `audio_chunk` сцены | `audio_merge` (local) |
 | `audio_merge` | — (аудио сцены ready) |
-| все `iu_image` сцены, если в команде есть video | `video_group` по группам |
+| все `iu_image` сцены, если в команде есть video | `video_group` по группам (2a: заготовлено, не включено — video в команду v2 не попадает, планировщик video пуст, §13 п.9) |
 | последний `video_group` сцены | `video_merge` (local) |
 
 Это не автозапуск: работа создаётся в рамках команды, которую нажал пользователь (I1).
@@ -164,7 +164,7 @@ GPU-нода: worker ──▶ gpu-hub (auth + relay, без состояния)
 
 `PUT /internal/gen/jobs/:job_id/result?attempt=N` — тело = сырой файл (stream), заголовок `Authorization: Bearer <upload_token>` (HMAC от `job_id`, `attempt`, `exp`; выдаётся при claim).
 
-1. Поток → `{OUTPUT_DIR}/{build}/.incoming/{job_id}.{attempt}.tmp`, на лету sha256 и размер; fsync. Проверка формата (mp3/png/mp4 — magic bytes, длительность аудио > 0 и не тишина — порог RMS, чтобы «тишина = ready» не повторилась).
+1. Поток → `{OUTPUT_DIR}/{build}/.incoming/{job_id}.{attempt}.tmp`, на лету sha256 и размер; fsync. Проверка формата (mp3/png/mp4 — magic bytes, длительность аудио > 0 и не тишина — порог RMS, чтобы «тишина = ready» не повторилась; png (1.1.0) — структура и CRC, размеры > 0, поток пикселей, не пустой / однотонный кадр — порог стандартного отклонения яркости, §13 п.9).
 2. `BEGIN; SELECT … FROM gen_jobs WHERE job_id=$1 FOR UPDATE;` статус `running` и `attempt=N`? Нет → `ROLLBACK`, удалить tmp, `409 stale_attempt`.
 3. `rename(tmp → artifactPath(job))` (атомарно, тот же раздел).
 4. `UPDATE gen_jobs SET status='done', result_*`; `scene_assets`: для части (чанк, IU, группа) — `metadata.gen_parts[unit_key]`, для склейки — `ready` + `sha256` + `job_id` (§4.3); переходы §6.3; `NOTIFY gen_progress`.
@@ -326,6 +326,13 @@ RETURNING j.*;
     - на BA — «аудио» одной сцены → `ready`.
   - Тестовая книга и аккаунт удалены. Отчёт: `reports/2026-11-06/orch-v2-1d-release.md`, backend `stage164-prod-release.md`.
 
+- **2a** (2026-11-07) — **изображения (IU) на v2** для `books.orchestration='v2'`; без выкатки, npm publish, merge. Backend `orch-v2/2a-image` (`@animastor/orchestration` 1.1.0 в `packages/` + backend); хаб и воркер не менялись. Разведка — `architecture/ORCHESTRATION_V2_RECON_IMAGE.md`.
+  - **Ядро 1.1.0:** проверка PNG (`inspectPng`: структура + CRC, размеры 1…16384, поток пикселей, пустой кадр → `invalid_result`, один повтор, затем failed); пропуск готового по части (`input.part_hash`); готовность сцены без склейки (`input.scene_parts`); `cancel({commandId})` отдаёт `layers`; legacy `scene-window` (окно и read-repair chunk-статусов) не трогает v2-книгу.
+  - **Порты image (backend `orchestration-v2/image-ports.js`):** `planUnits` — один `iu_image` на юнит сцены (`units[]` + `dialogue_blocks[].units[]`), `unit_key` = id юнита; `buildPayload` — снимок workflow той же функции, что у legacy (`iu-processor.buildIUWorkflow`, байт-в-байт, seed статичен в шаблоне); `artifactPath` — канонический `{OUTPUT_DIR}/{build}/{book}_{ch}_{sc}_{unit}.png`; `onArtifactPlaced` — удаление устаревшего превью. Входных файлов нет (text-to-image, разведка §1.4).
+  - **Команда:** `/regenerate` v2-книги принимает `image`; `video` — без работ, `summary.skipped_unsupported` (только video → 409); `IU_IMAGE_VERSIONED` включён или ядро < 1.1.0 → 409 `v2_image_unavailable`; layer-config image off → 409 / отмена слоя.
+  - **Воркер / хаб:** v3-путь типонезависим (SaveImage → PNG из `COMFY_OUTPUT_DIR` → PUT, cancel из beacon → `/interrupt`) — проверено сквозным прогоном с бандлом 2.4.0 (`reports/2026-11-07/orch-v2-2a-e2e/`).
+  - Отчёт: `reports/2026-11-07/orch-v2-2a-image.md`.
+
 Задача G и крупные правки старой оркестрации заморожены (решение 05.11). Хвосты todo, которые закрываются v2: G, этапы 2–3 защиты /regenerate, retry policy соседних job, ложный «онлайн» воркера, `/queue/clear` всех, NULL-дубли `scene_assets`, D (счётчики панели).
 
 ## 13. Решения владельца (2026-11-05)
@@ -338,3 +345,10 @@ RETURNING j.*;
 6. **Присоединение (по итогам 1a, 06.11):** явная связь `gen_command_jobs`; стоп команды не трогает работы, нужные другой активной команде. Отмена — по слою. `build_id` и `summary` — колонки. Удаление книги чистит `gen_*`.
 7. **API (06.11):** один эндпоинт `generate` с `mode: missing | all` вместо generate / regenerate; стоп и прогресс — под `/generate/*`; неиспользуемые эндпоинты удаляются на этапе 4 (§11).
 8. **По итогам 1b (06.11):** `from_current_scene` разворачивается в `scope.level='scenes'` (1c); хэш «готово для текущего контента» = sha256 снимка workflow — принят, одна пересборка legacy-аудио допустима; `rebuild_all → force` остаётся до §11 (этап 2); чанки после склейки не удаляются (нужны для перегенерации одного чанка); `DELETE /book/:id/cache` для v2-книги хаб не вызывает (1c).
+9. **Этап 2a, изображения (07.11; решения исполнителя по заданию владельца — отчёт `reports/2026-11-07/orch-v2-2a-image.md`):**
+   - **Готовность (I2/I5).** Приём `iu_image` пишет в `scene_assets` (тип `image`, та же сборка) часть `metadata.gen_parts[unit_key] = {path, sha256, bytes, job_id, attempt, part_hash}`. Сцена `ready` — когда **все IU сцены** (список `input.scene_parts` = `[{unit_key, part_hash}]` из планировщика) приняты с тем же `part_hash`; приём, закрывающий набор, ставит `ready` + `sha256` (манифест «unit_key:sha256» по порядку) + `job_id` + `path` (файл первого IU) + `format='png'`. Незакрытый набор (часть IU с новым контентом, отмена части) → `pending`. Пропуск без `force` — по части: IU с тем же `part_hash` (sha256 снимка workflow = промпт + негатив + шаблон: seed, размер, шаги, LoRA) не перегенерируется; строка `stale` ничего не доказывает.
+   - **Чтение без правок фронтов.** v2 пишет **канонический** файл IU — его отдают `/iu-image`, `/preview` (строит из него), `/scene/…/image`, `/scene/…/storyboard` (список IU из `image_units` / JSON книги, от готовности не зависит), `/book/:id/storyboard` (zip), `/scene/…/status` (`image_ready` по файлам); прогресс — `progress-panel` v2 (у image нет строки склейки). Не обновляются для v2-книги (Redis-счётчики legacy): `assets-state` (`image_ready`, `scope_iu_ready`, `cover_iu_ready`) и `/chunk/:id/image` (флаг `chunk.image`) — фронты по ним картинки не показывают (web/Android берут кадры из storyboard + `iu-image`; из `assets-state` читается только `has_assets`), правка отложена до §11 (этап 2).
+   - **Превью `pr-<id>`** — не отдельная работа: его по-прежнему строит backend лениво на `GET /preview`; v2 только удаляет устаревшее превью при приёме нового IU (`onArtifactPlaced`), как legacy-публикация.
+   - **`IU_IMAGE_VERSIONED`** (на проде выкл.): v2 его ветку не использует; флаг включён → слой image v2-книги fail-closed (`409 v2_image_unavailable`), аудио и legacy не затронуты.
+   - **video** для v2-книги не поддерживается до этапа 3: работ не создаётся, `summary.skipped_unsupported: ['video']`; переход image→video (§6.3) в ядре есть, но не срабатывает (video не входит в слои команды, планировщик video пуст).
+   - **Обложка** — первая сцена главы `cover`, её IU идут тем же `iu_image`; отдельной работы нет. Legacy-«сценовый» кадр `{prefix}.png` писателя не имеет и в v2 не делается.

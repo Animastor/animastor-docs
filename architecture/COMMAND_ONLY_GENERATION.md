@@ -131,6 +131,10 @@ progress-panel показывает строки `blocked`, `interrupted` и `fa
   cancel flag и tombstone (флаг без TTL следующей команде не мешает),
   вытесняет `blocked`/`interrupted`/`failed` задачи тех же типов на тех же
   сценах и создаёт новые.
+- **v2-книга** (`books.orchestration='v2'`, `ORCHESTRATION_V2.md` §12–13): `/regenerate`
+  создаёт команду ядра v2 для `audio` и `image` (этап 2a); `video` работ не создаёт —
+  `summary.skipped_unsupported` и `skipped_worker_types` в ответе, только `video` → **409**
+  `v2_layer_not_supported_yet`; image при `IU_IMAGE_VERSIONED` → **409** `v2_image_unavailable`.
 - `PUT /layer-config` с `X_enabled=false` останавливает стадию X по книге:
   задачи реестра и строки PG → cancelled; lease и копии в очереди хаба
   снимаются; GENERATING без lease → DIRTY; сцены без авторизованной стадии

@@ -4,7 +4,48 @@ All notable changes to Animastor are documented here.
 
 ---
 
+## 2026-11-07
+
+### Feat
+
+- **Оркестрация v2, этап 2a: изображения (IU) на ядре v2** для `books.orchestration='v2'`
+  (backend `orch-v2/2a-image`; не влито, не выкачено, `@animastor/orchestration` 1.1.0 не опубликован).
+  - **Ядро 1.1.0:** проверка PNG при приёме (структура + CRC, размеры > 0, поток пикселей, пустой /
+    однотонный кадр → `invalid_result`: один повтор, затем failed; порог `ORCH_V2_MIN_LUMA_STDDEV`,
+    по умолчанию 2.0); пропуск готового по IU (`part_hash` = sha256 снимка workflow); сцена `image`
+    `ready`, когда приняты все IU сцены; legacy `scene-window` (окно, read-repair chunk-статусов,
+    `generate-next`) не трогает v2-книгу.
+  - **backend:** порты image (`planUnits` / `buildPayload` — тот же workflow, что у legacy, байт-в-байт /
+    `artifactPath` — канонический `…_{unit}.png` / инвалидация превью); `/regenerate` v2-книги принимает
+    `image`, `video` → `summary.skipped_unsupported`; `IU_IMAGE_VERSIONED` → 409 `v2_image_unavailable`.
+  - **Фронты** не менялись: кадры v2-книги отдают прежние эндпоинты чтения (паритет не затронут).
+    `assets-state` (image-счётчики) и `/chunk/:id/image` для v2-книги не обновляются — фронты по ним
+    картинки не показывают; правка — с API §11.
+  - **Хаб и воркер** не менялись (v3-путь типонезависим; сквозной прогон с воркером 2.4.0).
+  - ADR `architecture/ORCHESTRATION_V2.md` §4.3, §6.3, §7, §12 «2a», §13 п.9; разведка
+    `architecture/ORCHESTRATION_V2_RECON_IMAGE.md` (ветка `recon/image-path` влита);
+    `architecture/COMMAND_ONLY_GENERATION.md` (ответ `/regenerate` для v2-книги).
+  - ADR §6.5 / §13 п.10 — видео ждёт картинки (решение для этапа 3).
+  - Отчёт: `reports/2026-11-07/orch-v2-2a-image.md`.
+
+---
+
 ## 2026-11-06
+
+### Fix
+
+- **`cleanBookRedisKeys` покрывает legacy-семейства ключей книги** (backend, ветка
+  `fix/clean-book-redis-keys`). После `DELETE /api/v1/book/<id>` у книги, генерировавшейся через legacy,
+  оставались 35 Redis-ключей (`reports/2026-11-06/orch-v2-1d-release.md` §18): `assets` и
+  `artifact-manifest` (без TTL — навсегда), `fence-journal`, `fence-publish`, `fence-unrecoverable`,
+  `intent`, `dispatch-intent`, `idempotency:stage-epoch`, `job`, `result-processed`,
+  `dispatch-completed`, `cancelled-workers`. Добавлен шаблон на каждое семейство, все — только по id
+  этой книги (форматы взяты у писателей, id экранирован; хабовый `job:{dispatch_id}:{job_id}` —
+  исправлен прежний недостижимый шаблон `job:{book}_*`). `idempotency:ref` удаляется парно
+  (ref + claim + маркер завершения) через `releaseClaimsForBook` — только при удалении книги;
+  cache-clear освобождает claims после очистки очереди хаба (Stage 116/118), как и раньше.
+  `cancelled-workers:{book}` теперь тоже в чистке, поэтому `book-deletion` взводит сигнал заново (TTL 1 ч).
+  Документация: `architecture/PHASE_2_CONTRACTS.md` §9.2 п.4, `architecture/PHASE_4_BOOK_MODEL.md` §7.
 
 ### Release
 
@@ -19,6 +60,12 @@ All notable changes to Animastor are documented here.
 
 ### Feat
 
+- **Свежие логи воркера на VPS (ORCHESTRATION_V2 §8.5)** — ветки `feat/worker-logs` в `animastor-worker`, `animastor-gpu-hub`, `animastor-backend`, `animastor-docs`; не влито, не выкачено, релиза GHCR/npm нет.
+  - **Воркер 2.4.1.** Кольцевой буфер последних 2000 строк / 256 КиБ всего, что пишет логгер (плюс stderr ComfyUI, если его запускает сам воркер). Каждые 30 с — только новые строки: `POST hub /v3/logs` с Bearer, gzip-JSON `{worker_id, seq_from, seq_to, lines[]}`, ≤ 64 КиБ после сжатия; нет новых строк → нет POST; ошибка/таймаут 5 с → молча, строки остаются; отправка не блокирует цикл задач. Редакция **до** отправки: `Authorization`/`Bearer`, `upload_token`, `key|token|secret/password=` + `[A-Za-z0-9_-]{32,}`, значения `.env`, зарегистрированные секреты. `WORKER_LOG_SHIP=on|off` (по умолчанию `on`); `send_log_tail:true` в ответе beacon → одноразовый сброс всего буфера.
+  - **Хаб.** Маршрут **17** `POST /v3/logs`: тот же Bearer-гейт, сырое тело с потолком 128 КиБ (`413`), gunzip с потолком распаковки 1 МиБ (`413`), пересылка в backend `/internal/workers/:worker_id/logs` (`x-api-key`, docker-сеть), записи в Redis и своей копии логов нет; `worker_id` — из токена, не из тела.
+  - **Backend.** Ingest `POST /internal/workers/:id/logs` (x-api-key; UUID до ФС, `400`/`404`/`413`, `log_shipping=false` → 204 без записи) → `{WORKER_LOGS_DIR}/<id>/current.log` строками `ts level msg`, права 0700/0600, ротация > 5 МБ в `current.log.1` (старый `.1` удаляется). Opt-in-колонка `workers.log_shipping BOOLEAN NOT NULL DEFAULT FALSE` + миграция **WLOG-1** (true для `mode='system'` и workspace с владельцем `role='admin'`). Одноразовый in-memory флаг: `POST /api/v1/workers/:id/request-log` → `send_log_tail` ровно в одном ответе `/internal/gen/beacon`. Чтение: `GET /api/v1/workers/:id/log?lines=N` (N ≤ 2000, по умолчанию 200), владелец workspace / админ.
+  - **Тесты:** воркер 98 (`tests/run-all.cjs`), хаб 40 (`npm test`, freeze-тест пинит 17 маршрутов), backend — `tests/worker-logs.test.js` 19 и полный прогон `scripts/test-backend.sh`: **3798 passing, 28 pending, 0 failing**.
+  - **Документация:** `architecture/ORCHESTRATION_V2.md` §8.5 (новая), `architecture/GPU_HUB_CONTRACT.md` §3 (маршрут 17), §12 (`V3_LOG_*` overrides), §16 (строка `/v3/logs`, guard `tests/v3-logs.cjs`).
 - **Скрипт снимка исходников `scripts/source-snapshot.sh` (репозиторий `animastor-deploy`).**
   Создаёт `/home/animastor/backups/sources/animastor-sources-<UTC>.tar.zst` из деревьев
   файлов ветки `main` всех bare-репозиториев `/home/animastor/repos/*.git` (`git archive

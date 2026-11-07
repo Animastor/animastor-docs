@@ -114,12 +114,15 @@ New seam: `backend/src/book/book-deletion.cjs` → `createBookDeletion(deps).del
   canonical/runtime state is purged, so a running worker/agent observes it even
   if a later cleanup step fails:
   1. cancellation signal: Redis `cancelled-workers` set + PG agent-session status
-     cancel — before `book.resetBook` and before any other cleanup;
+     cancel — before `book.resetBook` and before any other cleanup (the signal is
+     re-armed right after the Redis purge, since the purge now removes the key);
   2. canonical: disk bundle removal (`book.resetBook`) + snapshot file;
   3. build output dirs (build_ids come from Redis chunk keys, so this runs before
      the Redis purge);
   4. runtime/ephemeral: scene-window cancel flag, active-audio/image/video keys,
-     all book-keyed key families (`cleanBookRedisKeys`);
+     all book-keyed key families (`cleanBookRedisKeys`, including the legacy
+     families of §18 of `reports/2026-11-06/orch-v2-1d-release.md` and — for a
+     deleted book — the paired release of `idempotency:ref` + claim + marker);
   5. derived PG: per-table deletes (`image_units` … `book_snapshots`, `books` last
      for FK order), each individually try/caught;
   6. best-effort GPU-hub queue clear.

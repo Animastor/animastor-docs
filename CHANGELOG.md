@@ -32,6 +32,21 @@ All notable changes to Animastor are documented here.
 
 ## 2026-11-06
 
+### Fix
+
+- **`cleanBookRedisKeys` покрывает legacy-семейства ключей книги** (backend, ветка
+  `fix/clean-book-redis-keys`). После `DELETE /api/v1/book/<id>` у книги, генерировавшейся через legacy,
+  оставались 35 Redis-ключей (`reports/2026-11-06/orch-v2-1d-release.md` §18): `assets` и
+  `artifact-manifest` (без TTL — навсегда), `fence-journal`, `fence-publish`, `fence-unrecoverable`,
+  `intent`, `dispatch-intent`, `idempotency:stage-epoch`, `job`, `result-processed`,
+  `dispatch-completed`, `cancelled-workers`. Добавлен шаблон на каждое семейство, все — только по id
+  этой книги (форматы взяты у писателей, id экранирован; хабовый `job:{dispatch_id}:{job_id}` —
+  исправлен прежний недостижимый шаблон `job:{book}_*`). `idempotency:ref` удаляется парно
+  (ref + claim + маркер завершения) через `releaseClaimsForBook` — только при удалении книги;
+  cache-clear освобождает claims после очистки очереди хаба (Stage 116/118), как и раньше.
+  `cancelled-workers:{book}` теперь тоже в чистке, поэтому `book-deletion` взводит сигнал заново (TTL 1 ч).
+  Документация: `architecture/PHASE_2_CONTRACTS.md` §9.2 п.4, `architecture/PHASE_4_BOOK_MODEL.md` §7.
+
 ### Release
 
 - **Оркестрация v2, этап 1 выкачен на прод (1d).**

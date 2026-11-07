@@ -540,8 +540,18 @@ the **dangerous places** explicitly.
      `DELETE /book/:id/cache`) also removes the per-scene retry budget
      `animastor:retry-budget:{book}:{chapter}:{scene}:{stage}` — orchestration writes it without a TTL,
      so it used to outlive the book forever. Pattern `retry-budget:{book}:*:*:*` (book id glob-escaped);
-     the `global` / `type:*` / `worker:*` aggregates are never touched. Keys that already carry a TTL
-     (`dispatch-completed:*` ~30 min, `cancelled-workers:{book}` 1 h) expire on their own by design.
+     the `global` / `type:*` / `worker:*` aggregates are never touched.
+   - 2026-11-06: the purge covers the legacy-book families found after `DELETE /book`
+     (`reports/2026-11-06/orch-v2-1d-release.md` §18): `assets`, `artifact-manifest`, `fence-journal`,
+     `fence-publish`, `fence-unrecoverable`, `intent`, `dispatch-intent`, `idempotency:stage-epoch`,
+     `job` (hub dedup `job:{dispatch_id}:{job_id}` — the book sits in the job_id segment, the old
+     `job:{book}_*` pattern never matched), `result-processed`, `dispatch-completed`,
+     `cancelled-workers`. Every pattern carries this book id (glob-escaped; percent-encoded where the
+     writer encodes key components) — no global pattern. `idempotency:ref` is released **paired**
+     (ref + claim + completion marker, `releaseClaimsForBook`) via `options.releaseClaims`, which only
+     `DELETE /book` passes: cache clear must release after the hub lane clear (Stage 116/118).
+     `cancelled-workers:{book}` is now inside the purge too, so `book-deletion` re-arms it (1 h TTL)
+     right after — the earlier note "TTL keys expire on their own by design" no longer applies to it.
 
 ---
 

@@ -25,6 +25,7 @@ All notable changes to Animastor are documented here.
   - ADR `architecture/ORCHESTRATION_V2.md` §4.3, §6.3, §7, §12 «2a», §13 п.9; разведка
     `architecture/ORCHESTRATION_V2_RECON_IMAGE.md` (ветка `recon/image-path` влита);
     `architecture/COMMAND_ONLY_GENERATION.md` (ответ `/regenerate` для v2-книги).
+  - ADR §6.5 / §13 п.10 — видео ждёт картинки (решение для этапа 3).
   - Отчёт: `reports/2026-11-07/orch-v2-2a-image.md`.
 
 ---

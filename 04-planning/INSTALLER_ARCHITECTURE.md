@@ -1855,6 +1855,7 @@ When a prerequisite fails, the installer produces a structured remediation:
 | `worker-setup-api.test.js` | Worker setup API routes | Integration |
 | `worker-bundle-env.test.js` | Worker bundle .env handling | Unit tests |
 | `worker-cleanup.test.js` | Worker cleanup logic | Unit tests |
+| `workflow-model-names-manifest.test.js` | Workflow `*_name` model files exist in their manifest (backend) | Real manifests, no network |
 
 ### Test as Architecture Contracts
 
@@ -1869,6 +1870,9 @@ Tests serve as **executable architecture contracts** — they verify:
 8. Bootstrap rejects credential env vars (`gpu-hub-bootstrap.test.js`)
 9. Setup contract never exposes raw manifests (`installer-setup-contract.test.js`)
 10. Model downloads are idempotent (`installer-engine.test.js` tests 15-16)
+11. Workflow model names are installed by their manifest — every model-file `*_name` in a manifested
+    workflow is a `filename` dependency of that manifest (`backend/tests/workflow-model-names-manifest.test.js`,
+    stage166 A; manifest-less legacy `old_*` workflows are an explicit list in the test)
 
 ### Mock Architecture
 

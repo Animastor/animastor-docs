@@ -27,7 +27,7 @@
 ## 3. Инварианты (нарушение любого = баг)
 
 1. **I1 Только команда.** Строки `gen_jobs` создаёт только обработка команды пользователя (или переход внутри уже идущей команды, §6.3). Никаких циклов, которые создают работу.
-2. **I2 Одна правда.** Статус работы — только `gen_jobs.status`. Готовность ассета — только `scene_assets` (пишется только транзакцией приёма, §7). Redis, хаб, файлы на диске статус не определяют.
+2. **I2 Одна правда.** Статус работы — только `gen_jobs.status`. Готовность ассета — только `scene_assets` (пишется только транзакцией приёма, §7). Redis, хаб, файлы на диске статус не определяют. Legacy-ветки, которые пишут `scene_assets` сами (read-repair placeholder-аудио на `GET /book` и `POST recover-placeholders`), для v2-книги не работают: гейт — общий предикат изоляции `orchestration.isV2Book` (fail-closed), тот же, что у scheduler, reconcile и scene window (2026-11-07, О2).
 3. **I3 Один владелец времени.** У запущенной работы один `deadline` в `gen_jobs`. Хаб и воркер своих таймаутов, влияющих на статус, не имеют.
 4. **I4 Принять можно только текущую попытку.** Результат принимается, если `job_id` и `attempt` совпадают и статус `running`. Всё остальное — 409 и выброс.
 5. **I5 Готово только по GPU.** `ready` у ассета — только после приёма реального результата (с sha256). Заглушка — это `placeholder`, и только так.
@@ -189,6 +189,8 @@ GPU-нода: worker ──▶ gpu-hub (auth + relay, без состояния)
 4. `UPDATE gen_jobs SET status='done', result_*`; `scene_assets`: для части (чанк, IU, группа) — `metadata.gen_parts[unit_key]`, для склейки — `ready` + `sha256` + `job_id` (§4.3); переходы §6.3; `NOTIFY gen_progress`.
 5. `COMMIT` → `200`.
 
+С 1.2.0 (О3): у картинки `scene_assets.width/height` — размеры из PNG-валидатора (они же в `gen_parts[unit_key]`; у строки сцены — размеры файла `path`, т. е. первой части); принятый файл после `rename` получает права `0644`, как legacy-файлы (временный в `.incoming` — `0640`).
+
 Сбой между 3 и 5: файл уже новый (это валидный результат этого юнита), статус остался `running` → воркер повторит PUT (идемпотентно: тот же attempt, та же sha → после commit 200) или сработает дедлайн → новая попытка перезапишет файл. Состояния «ready без файла» не бывает: ready пишется только после rename.
 
 Ошибка: `POST /internal/gen/jobs/:job_id/error?attempt=N` `{error_class, reason, comfy_status}` → транзакция: та же проверка attempt → `failed` или `queued` с `not_before = now + backoff` (если `attempt < max_attempts` и класс transient/oom). Классы и паузы — из текущей `gpu-retry-policy` (TRANSIENT 30/120 с ×2, OOM 60 с ×1, DETERMINISTIC 0); `timeout` и `worker_offline` — transient; `invalid_result` (тишина, битый файл) — один повтор, затем failed.
@@ -255,6 +257,8 @@ RETURNING j.*;
 
 **Внутренний контракт beacon (этап 1b).** `POST backend /internal/gen/beacon` (`x-api-key` обязателен) `{worker_id, current_job_id?}` → `{cancel: [job_id…]}`: отменённые работы воркера за последний час + `current_job_id`, если она у этого воркера уже не `running` (переочередь сторожем, отдана другому).
 
+**Access-лог хаба (v0.3.3, О3).** Одна строка на запрос `/v3/*` и legacy-путей: `[HTTP] <метод> <путь без query> → <код> worker=<worker_id> <мс>ms`; заголовки, тела, токены не печатаются, `worker_id` — из credential. Холостой трафик (пустой `task/next` / `v3/task/next` `{"task":null}`, 2xx beacon, `/health`) — одной сводкой раз в минуту.
+
 **Как сделано (этап 1c).** Воркер 2.4.0 шлёт `POST hub /v3/beacon {gpu, vram, version, image_tag, current_job_id}` раз в 10 с (`BEACON_INTERVAL_MS`) рядом с прежним `/beacon`. Сразу после выдачи задачи — внеочередной beacon. Хаб пересылает `{worker_id (из токена), current_job_id}` на `/internal/gen/beacon` и отдаёт `{cancel}` воркеру. `current_job_id` ∈ `cancel` → ComfyUI `/interrupt` (с `prompt_id`; если prompt ещё не создан — сразу после ответа `/prompt`), результат не отправляется, ошибка тоже, воркер переходит к следующей задаче.
 
 Отступление от «Redis-ключ heartbeat не нужен» (по заданию 1c): на `/v3/beacon` хаб обновляет **свой** ключ `animastor:worker:heartbeat:{type}:{id}` (EX 30, та же форма, что у `/beacon`, плюс `protocol_version: 3` и `current_job_id`). Его читают UI-статус и legacy-подсчёт воркеров. Это единственная запись в Redis на v3-пути. Продления по записи `running` на v3-пути нет: записи `running` там не существует. Реестр `animastor:gpu-hub:workers` v3-beacon не трогает: по нему v2-выдача сверяет `protocol_version=2`.
@@ -316,6 +320,9 @@ gzip-JSON {worker_id, seq_from, seq_to, lines: [{ts, level, msg}]}
 4. `.incoming/*.tmp` старше 1 ч → удалить.
 
 **Рестарт backend:** делать нечего — всё в PG; воркеры продолжают, результаты принимаются после старта, сторож доберёт просроченное. (Решено §13.1: продолжать.)
+
+**Журнал шагов (1.2.0, О3).** Ядро пишет одну info-строку на шаг через порт логгера хоста (`createOrchestration({ logger })`; backend передаёт `console`), сам `console` не вызывает:
+`[gen-v2] command-created` (книга, команда, слои, scope, `jobs_created`/`joined`/`skipped_ready`, `existing` для повторного клика) · `claim` (job, kind, unit_key, attempt/max_attempts, worker_id, ms) · `accept` (sha256, bytes, width/height, `idempotent`, `stage_jobs_created`, ms приёма, `run_ms` от claim) · `error` (каждая неудачная попытка: error_class, job_status, retry; `code=stale_attempt` для 409) · `requeue` (возврат в очередь, `delay_ms`) · `command-finished` (status, done/failed/cancelled, `run_ms`). Печатаются только поля белого списка (`gen/log.js`): токены загрузки, пути и параметры задач в лог не попадают. Ошибка доставки NOTIFY→SSE в backend — `console.warn` `[ORCH-V2] progress NOTIFY→SSE failed …` (раньше глушилась).
 
 **Прогресс:** `GET /api/v1/book/:bookId/progress` = SQL-агрегат по `gen_command_jobs` ⨝ `gen_jobs` активных команд книги (по команде, слою, сцене: queued / running / done / failed). SSE `progress-stream` подписан на `LISTEN gen_progress` (payload: `book_id`, `command_id`) и при событии отдаёт свежий агрегат. «Призрачных задач» нет: панель показывает строки таблицы.
 

@@ -6,7 +6,49 @@ All notable changes to Animastor are documented here.
 
 ## 2026-11-07
 
-### Fix
+### Fix (stage167 — по итогам разбора `reports/2026-11-07/orch-v2-image-scene-run.md`)
+
+- **О1. Прогресс Генератора не залипает из-за HTTP-кэша (web + backend + Android).** 07.11 обычное окно
+  Opera отдавало `progress-panel`, снятый в 12:57:00 (`active`, 0/1), хотя команда завершилась в 12:59:55;
+  ответы несли только слабый `ETag`, без `Cache-Control`.
+  - **backend:** один middleware `src/middleware/no-store.js` на `/api/v1` до маршрутов — GET/HEAD опросных
+    путей (`/book/:id/{progress-panel,progress-stream,assets-state,status,agent-status,layer-config,generation*}`,
+    `/scene/:b/:c/:s/status`, `/worker/counts`, `/generate/*`) отдают `Cache-Control: no-store` +
+    `Pragma: no-cache`, `ETag`/`Last-Modified` подавлены, поэтому `304` на них не бывает. Тест
+    `tests/no-store-headers.test.js`.
+  - **web:** `api/client.ts` — `cache: 'no-store'` по умолчанию для тех же путей (`isNoStorePath`, один
+    список на три стороны), SSE `progress-stream` тоже `no-store`; цикл панели: таймаут 10 с на каждый запрос
+    (`POLL_REQUEST_TIMEOUT_MS`), пауза 1,5 с прерывается — `visibilitychange → visible`, `pageshow` (bfcache)
+    и SSE `generation_complete` / v2 `progress` с `command_id` перезапрашивают панель сразу
+    (`state/panelRefresh.ts`); запрос, пришедший во время опроса, не теряется.
+  - **Android 0.2.8 (10):** у OkHttp кэша нет (закреплено тестом); `NoStoreInterceptor` ставит `no-store` на
+    те же пути (`PollRequests.kt`, те же фикстуры); `withTimeout(10 с)` на панель и счётчики (read timeout
+    клиента — 15 мин); пауза прерывается по SSE и `onResume`.
+  - Профильный документ: `architecture/COMMAND_ONLY_GENERATION.md` §«Прогресс Генератора не залипает»;
+    паритет — `architecture/ANDROID_WEB_PARITY.md` (PARITY).
+- **О2. Legacy read-repair placeholder-аудио не трогает v2-книгу (I2).** `recoverMissingPlaceholders()` шёл на
+  каждом `GET /book` и `POST recover-placeholders` без проверки v2 и мог создать placeholder-mp3 +
+  `scene_assets(audio)` в обход приёма. Гейт — внутри функции, через общий предикат изоляции legacy
+  (`PersistencePort orchestration.isV2Book`, fail-closed — тот же у scheduler, reconcile, scene window).
+  `@animastor/editor` не менялся. ADR `architecture/ORCHESTRATION_V2.md` §3 I2. Тест
+  `tests/orch-v2-placeholder-readrepair-gate.test.js`.
+- **О3. Наблюдаемость v2.** `@animastor/orchestration` **1.2.0** (minor): строки
+  `[gen-v2] command-created | claim | accept | error | requeue | command-finished` через порт логгера, поля из
+  белого списка (без токенов, путей, параметров); ядро `src/gen` не вызывает `console` само;
+  `scene_assets.width/height` у картинок из PNG-валидатора; принятые файлы `0644`. backend: ошибка
+  NOTIFY→SSE — `console.warn` вместо пустого `.catch`. gpu-hub **v0.3.3**: access-лог (метод, путь без query,
+  код, `worker_id`, мс), пустые опросы задач, 2xx beacon и `/health` — сводкой раз в минуту. ADR §7, §8.4, §9.
+- **Установщик 0.2.10: бандл воркера копируется целиком.** Воркер 2.4.1 падал с
+  `Cannot find module './worker-logs.cjs'`: 0.2.9 копировал только `manifest.worker_bundle.files`, а
+  `worker-logs.cjs` (есть в бандле хаба и в копии внутри пакета установщика) не было ни в одном манифесте.
+  Теперь копируется всё содержимое источника (список манифеста — минимальная проверка наличия; `.env`,
+  `.env.*` кроме `.env.example`, `node_modules/`, `.git/`, `logs/` — никогда); список файлов бандла —
+  в install-state `components.worker.bundle_files`, при обновлении удаляются файлы старой версии, которых
+  нет в новой (только записанные установщиком, никогда `.env` / `node-classes.json`); перед стартом все
+  локальные `require('./…')` из `worker.cjs` должны быть на диске, иначе FAILED с именем файла.
+  `worker-logs.cjs` добавлен в три манифеста и `WORKER_CONFIG_FILES`. Профиль image:
+  `gpu_min_vram_gb = 14` (оценка с выводом в `hardware.derivation`; карты 16 GB проходят, 12 GB — нет).
+  Профильный документ: `04-planning/INSTALLER_ARCHITECTURE.md` §7.10.
 
 - **Имена моделей в workflow приведены к манифестам (stage166 A, решение владельца).** Источник правды —
   файлы на HF в `packages/animastor-installer/ai/install-manifests`: `img-qwen-image.json` узел 1010

@@ -8,6 +8,28 @@ All notable changes to Animastor are documented here.
 
 ### Fix
 
+- **Имена моделей в workflow приведены к манифестам (stage166 A, решение владельца).** Источник правды —
+  файлы на HF в `packages/animastor-installer/ai/install-manifests`: `img-qwen-image.json` узел 1010
+  `LoraLoaderModelOnly.lora_name` → `Wuli-Qwen-Image-2512-Turbo-LoRA-4steps-V3.0-bf16.safetensors`;
+  `video-ltx-{1,2,3,4}p.json` узел 141 `UnetLoaderGGUF.unet_name` → `LTX-2.3-22B-distilled-1.1-Q4_K_M.gguf`
+  (проверено по HF API tree: файл есть, size `17763015328` и sha256
+  `cfebeb7a…1f75fbd` совпадают с манифестом `video/ltx-2.3.json`). Манифесты не менялись.
+  **Гарантия-тест** `backend/tests/workflow-model-names-manifest.test.js`: для каждого workflow с профилем
+  в манифесте (`provenance.workflows`) все `*_name` со значением-файлом модели
+  (`.safetensors|gguf|pt|pth|ckpt|bin`) обязаны быть среди `filename` зависимостей манифеста; workflow без
+  манифеста (`old_*`) — явный список в тесте (новый без профиля валит тест), известные исключения —
+  отдельный `KNOWN_EXCEPTIONS` с TODO и ссылкой на отчёт, не skip всего теста.
+  Оба пути картинок (legacy и v2-порт) берут workflow из одной функции `buildIUWorkflow` — отдельной правки
+  не нужно.
+  - **Манифесты: только производные поля** (решение владельца 07.11): `baseline_sha256` пересчитан под новые
+    файлы у 5 артефактов (`img-qwen-image`, `video-ltx-1p…4p`), `revision` образ и видео → `2026.11.07-r1`;
+    данные о моделях/HF не менялись. Захардкоженные хеши в тестах установщика
+    (`installer-phase15`, `installer-resolver`) обновлены тем же пересчётом.
+  - **`@animastor/installer` 0.2.8 → 0.2.9** (patch bump `package.json` + lock; `npm publish` — владелец).
+    Зависимость backend `^0.2.4` → `^0.2.9` поднимается **только после publish**; до этого прогоны идут на
+    локальном пакете (`backend/node_modules/@animastor/installer` синхронизирован с `packages/`).
+  - Отчёт: `reports/2026-11-07/stage166-branches.md`.
+
 - **Логи воркера — всегда хозяину (WLOG-2).** Решение владельца 07.11: логи пишутся у всех воркеров,
   а не только у платформенных. Читает хозяин (владелец workspace воркера) и админ платформы;
   пользователи, которым воркер расшарен (`users`-гранты и `public`), логов не видят — `404`, аноним `401`.

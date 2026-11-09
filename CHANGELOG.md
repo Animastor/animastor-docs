@@ -4,6 +4,33 @@ All notable changes to Animastor are documented here.
 
 ---
 
+## 2026-11-09
+
+### Feature (orch v2, этап 3a — видео; не влито, не выкачено)
+
+- **Видео на оркестрации v2** (`video_group` + `video_merge`) для книг `books.orchestration='v2'`. Решения владельца — ADR
+  `architecture/ORCHESTRATION_V2.md` §13 п.11; поведение — §6.3, §6.5, §8.1; ход — §12 «3a». Слой `vbook` (задача H) не входит.
+  - **Видео только при реальном аудио сцены** (`scene_assets(audio)` `ready`, не заглушка); аудио в работе → ожидание
+    `audio_merge`; иначе `skipped_needs_audio`. Картинки: грязный IU → `skipped_image_dirty`, нет v2-картинки (в т.ч. legacy
+    без `gen_parts`) → `skipped_needs_image`; IU в работе → присоединение. Причины — в `summary` команды и в прогрессе
+    (`progress-panel`, строка video, поле `skipped`). Недостающее аудио и картинки команда сама не ставит.
+  - **Длительности — только реальные** `end_ms − start_ms`, одна функция для плана групп (DP, `totalFrames`, `frame_idx`,
+    таймкоды промпта), хэшей и склейки; IU с нулевой длительностью в видео не входит. `part_hash` группы = кадры + снимок
+    workflow + длительности; хэш склейки = хэши групп + длительности. Новое аудио → видео устарело, перегенерация только
+    командой (`missing`); всё готово, кроме склейки → только локальная склейка.
+  - **v2 `audio_merge` пересчитывает тайминги IU** (формулы legacy IU-RECALC) в транзакции приёма; `iu-repo` хранит
+    `estimated_duration_sec = 0` как 0 (раньше `0 || null` оставлял старую оценку — причина расхождений на BA).
+  - **Кадры по ссылке** `GET /internal/gen/jobs/:id/input/:name` с токеном задачи (без base64); nginx уже пропускает
+    (`animastor-deploy` 1b `81dff42`). Воркер **2.5.0** скачивает их в `COMFY_INPUT_DIR`, сверяет sha256, удаляет после работы.
+  - Файлы: группы `{prefix}_gN.mp4` (их читают таймлайн плеера, экспорт, cleanup — имена не менялись), итог `{prefix}.mp4`
+    (плеер, экспорт). Склейка звук не накладывает (звук — только экспорт → `muxVideoAudio`; «странность» разведки §10 снята).
+  - Legacy-видео не трогает v2-книгу (поздний `scene_video` отклоняется до записи, `completeGroup` — `orchestration_v2`).
+  - Пакеты: `@animastor/orchestration` **1.3.0** (не опубликован), воркер 2.5.0 (бандл), gpu-hub — перепин lock без релиза.
+  - Разведка `architecture/ORCHESTRATION_V2_RECON_VIDEO.md`: §9 п.5 (nginx-лимит есть), §10 (видео без звука — не баг).
+  - Отчёты: `reports/2026-11-09/orch-v2-stage3-video.md`, `reports/2026-11-09/orch-v2-stage3-video-durations.md`.
+
+---
+
 ## 2026-11-07
 
 ### Fix (stage167 — по итогам разбора `reports/2026-11-07/orch-v2-image-scene-run.md`)
@@ -5301,3 +5328,4 @@ document (rules, decisions, chat-stream divergences).
 - **Remove shouldGenerateIUImage dead code**: Removed unused function that was already dead.
 - **PATCH snapshot-based diff**: Updated diff algorithm to work with PATCH endpoint.
 - **Update docs**: CHANGELOG.md, PROJECT_STRUCTURE.md.
+# 2026-11-07 — Добавлена разведка слоя видео для оркестрации v2: `architecture/ORCHESTRATION_V2_RECON_VIDEO.md`.

@@ -7,7 +7,7 @@
 > `animastor boot` + custom-node deps of the running ComfyUI — §7.5 (installer `0.2.4`, 2026-10-31);
 > tools before ✗, strict CLI, persistent node deps, platform ComfyUI restart — §7.6 (installer `0.2.5`, 2026-11-02);
 > `doctor` does not restart a healthy or busy worker — §7.2, §7.3, §7.9 (installer `0.2.8`, 2026-11-04)
-> **Installer version:** 0.2.8 (`animastor-backend: packages/animastor-installer/package.json`)
+> **Installer version:** 0.2.10 (`animastor-backend: packages/animastor-installer/package.json`)
 >
 > This document describes the **actually implemented** architecture of Animastor
 > Installer based on a full code audit, tests, and git history.

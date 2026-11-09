@@ -5301,3 +5301,4 @@ document (rules, decisions, chat-stream divergences).
 - **Remove shouldGenerateIUImage dead code**: Removed unused function that was already dead.
 - **PATCH snapshot-based diff**: Updated diff algorithm to work with PATCH endpoint.
 - **Update docs**: CHANGELOG.md, PROJECT_STRUCTURE.md.
+# 2026-11-07 — Добавлена разведка слоя видео для оркестрации v2: `architecture/ORCHESTRATION_V2_RECON_VIDEO.md`.

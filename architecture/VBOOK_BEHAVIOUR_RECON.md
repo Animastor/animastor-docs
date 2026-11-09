@@ -537,6 +537,6 @@ fire   = seed01 < rule.probability * rule.strength_scale
 - Документ: `architecture/VBOOK_BEHAVIOUR_RECON.md`.
 - Push: только `origin` (`/home/animastor/repos/animastor-docs.git`); в `main` не вливается, `deploy-docs` не запускается.
 - Ссылки проверены временным скриптом: 139 ссылок `файл:строка`, 139 разрешены (файл существует, номер строки в границах), 0 ошибок; скрипт в коммит не входит.
-- `git log -1`: `cbb48639b377f9393af6c282c0ba2e6e2c4634ca`, 2026-11-09 15:05:14 +0000, «docs: точная ссылка на ADR §6.5 (видео зависит от чистых картинок)» (первый коммит документа — `e27fec8df303e33c085d99b983a619e4099be73f`, 15:00:50).
-- `git ls-remote origin recon/vbook-behaviour`: `cbb48639b377f9393af6c282c0ba2e6e2c4634ca refs/heads/recon/vbook-behaviour` — совпадает с локальным HEAD.
-- Ветка на момент отчёта: `ahead 2, behind 4` относительно `origin/main` (`2c4ac58`); не ребейзилась.
+- Коммиты документа: `e27fec8df303e33c085d99b983a619e4099be73f` (2026-11-09 15:00:50, основной текст), `cbb48639b377f9393af6c282c0ba2e6e2c4634ca` (15:05:14, ссылка на ADR §6.5), далее — правки §13.
+- Актуальный HEAD ветки (меняется с каждой правкой документа): `git ls-remote origin recon/vbook-behaviour`; на момент публикации отчёта в `/home/animastor/reports/2026-11-09/` совпадал с локальным HEAD.
+- Ветка на момент отчёта: `ahead 3, behind 4` относительно `origin/main` (`2c4ac58`); не ребейзилась.

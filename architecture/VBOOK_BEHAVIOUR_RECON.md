@@ -502,7 +502,7 @@ fire   = seed01 < rule.probability * rule.strength_scale
 
 ## 11. Риски
 
-1. **Инвалидация готовых картинок/видео.** Любая правка `image.prompt`, `image.shot`, `image.style/negative`, паспорта, локации или render_rules меняет `part_hash` (`image-ports.js:66-70`) и перерисовывает IU. На BA включён только image; полная перерисовка 32 IU — прямые GPU-часы. Видео зависит от картинок (ADR §6.5 в `docs:architecture/ORCHESTRATION_V2.md`).
+1. **Инвалидация готовых картинок/видео.** Любая правка `image.prompt`, `image.shot`, `image.style/negative`, паспорта, локации или render_rules меняет `part_hash` (`image-ports.js:66-70`) и перерисовывает IU. На BA включён только image; полная перерисовка 32 IU — прямые GPU-часы. Видео зависит от картинок: грязный/отсутствующий IU не даёт собрать `video_group` (ADR §6.5 — `docs:architecture/ORCHESTRATION_V2.md:163-181`).
 2. **Catch-all в registry.** `unit.behaviour` без явной записи помечает `audio+image+video` при каждом diff (`prompt-dependency-registry.js:392-400`) — скрытая массовая инвалидация.
 3. **Однообразие.** Одно правило «покраснел» на все IU героя превращает сцену в набор тиков; нужны `cooldown_iu`, `max_per_unit`, `priority` и лимит на сцену.
 4. **Конфликт с `render_rules` и консистентностью персонажей.** `visuals.md` запрещает повторять паспорт (`:52-64`), а поведение может потребовать описания позы/лица; формулировки должны быть про действие, а не про внешность. `video_tokens` — якоря идентичности, их нельзя подменять поведением.

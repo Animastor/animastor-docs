@@ -171,12 +171,12 @@ Hub принимает тип worker из credential; v3 `GET /v3/task/next?type
 2. ADR §8.1 предусматривает URL входного файла; внутренний HTTP surface кода такого маршрута не содержит: `backend/src/orchestration-v2/routes.js:4`.
 3. ADR §6.5 предполагает чистоту принятых IU и причины пропуска; generic `accept` после IU только вызывает `planUnits`, без такой проверки, а host planner video отсутствует: `packages/animastor-orchestration/src/gen/accept.js:270`.
 4. ADR описывает video_merge как часть v2; legacy merge выполняется сразу внутри callback `completeGroup`, а не как `gen_jobs` local job: `backend/src/services/video-orchestrator.js:374`.
-5. ADR результата v2 использует raw stream и лимит; это реализовано, но nginx-лимит не установлен/не подтверждён кодом этих репозиториев: `packages/animastor-orchestration/src/gen/accept.js:363`.
+5. ADR результата v2 использует raw stream и лимит; это реализовано: `packages/animastor-orchestration/src/gen/accept.js:363`. **Поправка (2026-11-09, этап 3):** nginx-лимит есть — в `animastor-deploy` (этап 1b, `81dff42`): `location ^~ /internal/gen/jobs/` с `client_max_body_size 512m`, `proxy_request_buffering off`; репозиторий deploy в эту разведку не входил. Тот же `location` пропускает и `GET …/input/:name` (проверено снаружи 09.11: ответ даёт backend, не nginx).
 
 ## 10. Странности (только факты)
 
 - Комментарий `readIUMetadata` говорит «SQLite», но фактически делает запрос к PostgreSQL `image_units`: `backend/src/workflows/video/video-workflows.js:46`.
 - `video-service` объявляет `FPS = 24`, а workflow использует отдельный `VIDEO_FPS` из environment: `backend/src/video/video-service.js:18`; `backend/src/workflows/video/video-workflows.js:515`.
-- Итоговое scene video не содержит аудио, несмотря на то, что выравнивается по audio timeline; отдельный mux существует, но в scene merge не вызывается: `backend/src/video/video-merge.js:441`; `:618`.
+- ~~Итоговое scene video не содержит аудио…~~ — **не баг** (решение владельца 09.11, ADR §13 п.11 п.8): видео сцены звук не несёт по замыслу; звук соединяется только экспортом `/book/:id/export` → `muxVideoAudio`, плеер синхронизирует сам.
 - Legacy state `scene-video` имеет TTL сутки, тогда как `video-orch` является отдельным состоянием групп; их статусы могут иметь разные сроки жизни: `backend/src/video/video-service.js:174`; `backend/src/services/video-orchestrator.js:107`.
 - Worker v3 уже умеет отмену beacon/`/interrupt`, но v2 legacy-канал всё ещё опирается на очередь и hub timeout sweep: `worker:worker.cjs:955`; `hub:gpu-hub.js:648`.

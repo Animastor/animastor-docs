@@ -537,4 +537,6 @@ fire   = seed01 < rule.probability * rule.strength_scale
 - Документ: `architecture/VBOOK_BEHAVIOUR_RECON.md`.
 - Push: только `origin` (`/home/animastor/repos/animastor-docs.git`); в `main` не вливается, `deploy-docs` не запускается.
 - Ссылки проверены временным скриптом: 139 ссылок `файл:строка`, 139 разрешены (файл существует, номер строки в границах), 0 ошибок; скрипт в коммит не входит.
-- Фактический `git log -1` и `git ls-remote origin recon/vbook-behaviour` — в отчёте после пуша (значение коммита появляется только после создания коммита).
+- `git log -1`: `cbb48639b377f9393af6c282c0ba2e6e2c4634ca`, 2026-11-09 15:05:14 +0000, «docs: точная ссылка на ADR §6.5 (видео зависит от чистых картинок)» (первый коммит документа — `e27fec8df303e33c085d99b983a619e4099be73f`, 15:00:50).
+- `git ls-remote origin recon/vbook-behaviour`: `cbb48639b377f9393af6c282c0ba2e6e2c4634ca refs/heads/recon/vbook-behaviour` — совпадает с локальным HEAD.
+- Ветка на момент отчёта: `ahead 2, behind 4` относительно `origin/main` (`2c4ac58`); не ребейзилась.

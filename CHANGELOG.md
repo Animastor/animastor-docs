@@ -26,7 +26,8 @@ All notable changes to Animastor are documented here.
     валидируется хостом.
   - **Матчер** — чистая функция: `seed = sha256(book:rule:unit)`, порог `probability`, `strength 0` = выкл., cooldown по
     (правило, герой) внутри сцены, одно поведение на героя в IU (priority, затем id), пропуск `behaviour_locked`/заполненных IU,
-    снимок `action`. Вызов — один хук после всех LLM-шагов окна в **обоих** путях раннера; только IU окна; без правил — no-op.
+    снимок `action`; **лимит на сцену** `max_per_scene` (дефолт 2, книга переопределяет `defaults.max_per_scene`, `0` —
+    выкл.; считается по IU, внутри IU — priority, id; заполненные и заблокированные IU входят в счёт). Вызов — один хук после всех LLM-шагов окна в **обоих** путях раннера; только IU окна; без правил — no-op.
   - **Видео**: фразы `<character_id> <action>` дописываются к строке сториборда; `video.action`, картинки не меняются.
   - **Инвалидация**: `unit.behaviour` → только video; `unit.state`, `unit.behaviour_locked` → ни один слой; правка правил
     dirty не ставит.
@@ -35,7 +36,7 @@ All notable changes to Animastor are documented here.
   - Пакеты (не опубликованы): `@animastor/vbook-runtime` 0.3.0, `@animastor/editor` 0.3.0, `@animastor/assistant` 0.2.0,
     `@animastor/generation` 0.1.2. Backend до публикации подключает их `file:../packages/*`.
   - Документы: `architecture/VBOOK_BEHAVIOUR.md` (новый), `07-agents-and-generators/BEHAVIOR_JSON_LIFECYCLE.md`
-    (переписан), `architecture/PHASE_2_CONTRACTS.md` (строка `behavior.json`). Отчёты: `reports/2026-11-10/behaviour-p0.md`, `reports/2026-11-10/behaviour-p0-fix.md`.
+    (переписан), `architecture/PHASE_2_CONTRACTS.md` (строка `behavior.json`). Отчёты: `reports/2026-11-10/behaviour-p0.md`, `reports/2026-11-10/behaviour-p0-fix.md`, `reports/2026-11-10/behaviour-p0-limit.md`.
 
 ---
 

@@ -51,7 +51,7 @@ round-tripped through `buildBookFromBundle` / `saveBookBundle` / `loadBook`:
 | `bible.json` | World/render context (country, epoch, render_rules, narrator, etc.). | no |
 | `locations.json` | Locations keyed by id. | no |
 | `voices.json` | Voices keyed by id. | no |
-| `behavior.json` | Per-character behavior keyed by `character_id`. Always written (starts as `{}`). | no (but present) |
+| `behavior.json` | Schema v2 `{schema_version: 2, rules, characters: {<character_id>: …}}` (v2.1 flat map migrated on load; API projects back to the flat map + `behavior_rules`, see `architecture/VBOOK_BEHAVIOUR.md`). Always written (starts as an empty v2 document). | no (but present) |
 | `characters.json` | Characters array. | no |
 
 **Canonical id (`bookId`):** the value of `manifest.book_id`. Defined by the bundle, not by

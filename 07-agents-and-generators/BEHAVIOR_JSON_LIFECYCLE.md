@@ -43,7 +43,7 @@
 | Источник | Путь | Что меняется |
 |---|---|---|
 | Редактор web/Android | `POST/PATCH/DELETE /book/:id/behaviors[/:characterId]` | `characters.<id>`; `rules` не трогаются |
-| Удаление героя | `DELETE /book/:id/characters/:id` | каскадно `characters.<id>` |
+| Удаление героя | `DELETE /book/:id/characters/:id`, `edit_book` | каскадно `characters.<id>` и правила `scope:"character"` этого героя |
 | Сохранение книги | `PUT /book/:id` | плоская карта из тела раскладывается в `characters`, `rules`/`schema_version` сохраняются; без `behaviors` — без изменений |
 | AI-ассистент | `edit_book` | `/behaviors/characters/{id}`; страж переписывает пути v2.1 и плоскую карту |
 | Пайплайн VBook | — | `behavior.json` **не пишет**; читает `rules` (через эффективные правила) и пишет результат в IU (`unit.behaviour`) |

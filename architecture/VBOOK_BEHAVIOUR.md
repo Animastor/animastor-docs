@@ -63,7 +63,23 @@
 - новые `id` книги добавляются;
 - выключенные и невалидные правила отбрасываются до матчера.
 
-Дефолты: 9 правил, перенесённых 1:1 из реакций `backend/ai/examples/behavior.json` (3 героя × 3 реакции, EN), `scope: "character"` с исходными `character_id` (`anna_smirnova`, `boris_volkov`, `dmitry_orekhov`). На книгах без этих героев дефолты не срабатывают — поведения появляются, только когда автор добавит правила в книгу (или переименует/обобщит дефолты).
+Дефолты (`backend/ai/examples/behaviour-rules.json`) — 7 правил `scope: "global"`, EN, только жесты (без внешности и одежды — не конфликтуют с passport и `render_rules`), у всех `strength 0.6`, `probability 0.25`, `cooldown_iu 4`, `priority 0`:
+
+| id | `when.emotion` | `then.action` |
+|---|---|---|
+| `global.embarrassed_blush` | embarrassed | blushes and looks away |
+| `global.thoughtful_head_rub` | thoughtful | rubs the back of the head |
+| `global.anxious_fidget` | anxious | fidgets with the hands |
+| `global.surprised_freeze` | surprised | raises the eyebrows sharply and freezes for a moment |
+| `global.angry_jaw` | angry | clenches the jaw, fists tightening |
+| `global.sad_shoulders` | sad | lets the shoulders drop, gaze lowering |
+| `global.joyful_smile` | joyful | breaks into a wide smile |
+
+Фразы — глагольные группы без подлежащего: в сториборде перед ними стоит `character_id`. Отдельных «shy»/«nervous» в словаре нет — их покрывают `embarrassed` и `anxious`.
+
+Образец: `backend/ai/examples/behaviour-rules.example.json` — 9 правил `scope: "character"` из реакций примера `behavior.json` (`anna_smirnova`, `boris_volkov`, `dmitry_orekhov`). **Не загружается** ни матчером, ни промптом импорта (`ai-service.loadReferenceExamples` исключает `behaviour-rules*.json`); правила копируются в `rules` книги вручную.
+
+**Частота.** Ограничения: cooldown на пару (правило, герой) и одно поведение на героя в IU. Лимита на сцену нет. На фикстуре из 4 IU и 2 героев (6 из 8 состояний героев подпадают под дефолтные правила) распределение по 10 000 `book_id`: 0 поведений — 23,5%, 1 — 30,8%, 2 — 24,4%, 3 — 14,7%, 4 — 5,5%, 5 — 1,1%, 6 — 0,1%.
 
 ## 3. Эмоции в IU (`unit.state`)
 
@@ -101,8 +117,11 @@
 - **Видео**: `video-workflows.js` `buildVideoPrompt` — после действия (и строки «speaking with lip movement») к строке сториборда добавляется `. <character_id> <action>[; …]`. `video.action` в JSON не меняется; без `behaviour` (или с пустым массивом) промпт байт-в-байт прежний.
 - **Картинки** (`prompt-builder`) не затрагиваются.
 
-### Пример (фикстура отчёта `reports/2026-11-10/behaviour-p0.md`, в книге `{id: "boris_volkov.praised", probability: 1}`)
+### Пример (фикстура отчёта `reports/2026-11-10/behaviour-p0-fix.md`, дефолтные правила, `book_id = ba_example`)
 
+```
+state  iu-0000e004 {anna_smirnova: sad, boris_volkov: embarrassed}  → behaviour [global.embarrassed_blush → boris_volkov]
+строка 9.0–12.0s: wide shot. slow push-in on the desk. boris_volkov blushes and looks away
 ```
 state  iu-0000e001 {boris_volkov: proud}  → behaviour [boris_volkov.praised]
 строка 0.0–3.0s: medium shot. … boris_volkov gestures broadly while reading. boris_volkov speaking with lip movement. boris_volkov lights up instantly, straightens to his full height and talks twice as fast
@@ -125,7 +144,8 @@ state  iu-0000e001 {boris_volkov: proud}  → behaviour [boris_volkov.praised]
 |---|---|---|
 | `POST /book/:id/behaviors` | `{character_id, baseline?}` | пишет `characters.<id>`; 409 на дубль; служебный ключ не является героем (404) |
 | `PATCH /book/:id/behaviors/:characterId` | `{fields}` | `setDeep` в `characters.<id>`; файл v2.1 мигрирует при первой записи |
-| `DELETE /book/:id/behaviors/:characterId`, `DELETE /book/:id/characters/:id` (каскад) | — | удаляет `characters.<id>`; `rules` не трогаются (правило `scope:"character"` удалённого героя просто не срабатывает) |
+| `DELETE /book/:id/behaviors/:characterId` | — | удаляет `characters.<id>`; `rules` не трогаются |
+| `DELETE /book/:id/characters/:id` (каскад) и удаление героя через `edit_book` | — | удаляет `characters.<id>` **и все правила `scope:"character"` с этим `character_id`**; глобальные правила остаются (`removeCharacterBehaviors`, страж ассистента) |
 | `PUT /book/:id` | книга целиком, `behaviors` — плоская карта | карта раскладывается в `characters`, `rules` и `schema_version` сохраняются; без `behaviors` — хранимый документ не меняется (раньше сбрасывался в `{}`); `behavior_rules` в теле игнорируется |
 | ассистент `edit_book` | JSON Patch | промпт описывает `/behaviors/characters/{id}`; страж в `applyPatches` переписывает `/behaviors/<id>…` → `/behaviors/characters/<id>…`, плоскую карту в `/behaviors` раскладывает в `characters` с сохранением `rules` |
 | импорт `.vbook`, создание книги | файлы бандла | `normalizeBehaviors` при загрузке, v2 при сохранении |
@@ -135,13 +155,14 @@ Web и Android рассчитаны на плоскую карту и допол
 ## 8. Что отложено
 
 - **Фаза 1**: `behaviour_locked` при ручной правке IU в редакторе (сейчас поле только читается матчером); UI правил (карточки, правка); правила для картинок (`then.image`, инвалидация image); формулировка фраз LLM внутри `visuals` (вариант C+B разведки); эмоция в TTS (`audio_emotion` — нужен per-IU слот в контракте TTS/воркера).
+- **Открыто**: лимит поведений на сцену (`max_per_scene`; разведка §11 п.3) — сейчас частоту ограничивают только cooldown и «одно на героя в IU», см. §2.2 «Частота».
 - Не входит: реестр этапов и слияние двух путей раннера; `vbook_enabled` в layer-config; перерасчёт готовых сцен; orch v2, слой `vbook` (задача H).
 
 ## 9. Файлы
 
 | Репозиторий | Файл |
 |---|---|
-| backend | `backend/ai/examples/behaviour-rules.json`, `backend/ai/rules/visuals.md`, `backend/src/services/agent/{behaviour-emotions,behaviour-matcher,behaviour-rules,behaviour-apply,pipeline-steps,pipeline-runner}.js`, `backend/src/workflows/video/video-workflows.js`, тесты `backend/tests/behaviour-p0.test.js`, `behavior-edit-book.test.js` |
+| backend | `backend/ai/examples/behaviour-rules.json`, `backend/ai/examples/behaviour-rules.example.json` (образец), `backend/src/services/ai-service.js` (`loadReferenceExamples`), `backend/ai/rules/visuals.md`, `backend/src/services/agent/{behaviour-emotions,behaviour-matcher,behaviour-rules,behaviour-apply,pipeline-steps,pipeline-runner}.js`, `backend/src/workflows/video/video-workflows.js`, тесты `backend/tests/behaviour-p0.test.js`, `behavior-edit-book.test.js` |
 | пакеты | `packages/animastor-vbook-runtime/src/{behavior-schema.cjs,index.js,bundle-validator.cjs,lazy-book/create.js}`, `packages/animastor-editor/src/{editor-routes,entity-crud-routes}.cjs`, `packages/animastor-assistant/src/chat-engine.cjs`, `packages/animastor-generation/src/dirty-grammar/prompt-dependency-registry.js` |
 | web | `frontends/app/src/api/{behaviors.ts,behaviors.test.ts,models.ts}`, `frontends/app/src/pages/EditPage.tsx` |
 | Android | `repository/{BehaviorEntries.kt,BookModels.kt}`, `ui/EditFragment.kt`, тест `repository/BehaviorEntriesTest.kt` |

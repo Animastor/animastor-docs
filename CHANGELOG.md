@@ -17,8 +17,11 @@ All notable changes to Animastor are documented here.
     `characters` и не теряет `rules`; без `behaviors` хранимый документ не меняется (раньше сбрасывался в `{}`).
     Редактор (POST/PATCH/DELETE, каскад удаления героя) и ассистент (`edit_book`, страж путей v2.1) — `characters.<id>`.
   - **Правила** `{id, scope, character_id?, when:{emotion, unit_type?}, then:{action}, strength, probability, cooldown_iu,
-    priority, enabled?}`; дефолты `backend/ai/examples/behaviour-rules.json` (9 правил из примера `behavior.json`,
-    `scope:"character"`); эффективные = дефолты ⊕ правила книги по `id` (поверхностное слияние, `enabled:false` выключает).
+    priority, enabled?}`; дефолты `backend/ai/examples/behaviour-rules.json` — 7 глобальных правил-жестов (EN, без
+    внешности/одежды; `probability 0.25`, `cooldown_iu 4`, `strength 0.6`); 9 правил примера `behavior.json` — образец
+    `behaviour-rules.example.json`, не загружается (ни матчером, ни промптом импорта); эффективные = дефолты ⊕ правила
+    книги по `id` (поверхностное слияние, `enabled:false` выключает). Удаление героя (редактор и `edit_book`) удаляет и
+    его правила `scope:"character"`.
   - **`unit.state`** — эмоция героя в IU из словаря 15 EN-слов; возвращается шагом `visuals` в том же вызове LLM,
     валидируется хостом.
   - **Матчер** — чистая функция: `seed = sha256(book:rule:unit)`, порог `probability`, `strength 0` = выкл., cooldown по
@@ -32,7 +35,7 @@ All notable changes to Animastor are documented here.
   - Пакеты (не опубликованы): `@animastor/vbook-runtime` 0.3.0, `@animastor/editor` 0.3.0, `@animastor/assistant` 0.2.0,
     `@animastor/generation` 0.1.2. Backend до публикации подключает их `file:../packages/*`.
   - Документы: `architecture/VBOOK_BEHAVIOUR.md` (новый), `07-agents-and-generators/BEHAVIOR_JSON_LIFECYCLE.md`
-    (переписан), `architecture/PHASE_2_CONTRACTS.md` (строка `behavior.json`). Отчёт: `reports/2026-11-10/behaviour-p0.md`.
+    (переписан), `architecture/PHASE_2_CONTRACTS.md` (строка `behavior.json`). Отчёты: `reports/2026-11-10/behaviour-p0.md`, `reports/2026-11-10/behaviour-p0-fix.md`.
 
 ---
 

@@ -33,8 +33,9 @@ All notable changes to Animastor are documented here.
     dirty не ставит.
   - Web и Android фильтруют служебные ключи (паритет — `ANDROID_WEB_PARITY.md`, «Открытые GAP» 2026-11-10); Android
     0.2.9 (versionCode 11), `BookData.behaviors` — сырой `JsonElement`.
-  - Пакеты (не опубликованы): `@animastor/vbook-runtime` 0.3.0, `@animastor/editor` 0.3.0, `@animastor/assistant` 0.2.0,
-    `@animastor/generation` 0.1.2. Backend до публикации подключает их `file:../packages/*`.
+  - Пакеты: `@animastor/vbook-runtime` 0.3.0, `@animastor/editor` 0.3.0, `@animastor/assistant` 0.2.0,
+    `@animastor/generation` 0.1.2 — опубликованы владельцем 12.11 (tarball'ы из npm совпадают с `packages/*` ветки);
+    backend берёт их из реестра (`^0.3.0`/`^0.3.0`/`^0.2.0`/`^0.1.2`), `backend/.npmrc` удалён.
   - Документы: `architecture/VBOOK_BEHAVIOUR.md` (новый), `07-agents-and-generators/BEHAVIOR_JSON_LIFECYCLE.md`
     (переписан), `architecture/PHASE_2_CONTRACTS.md` (строка `behavior.json`). Отчёты: `reports/2026-11-10/behaviour-p0.md`, `reports/2026-11-10/behaviour-p0-fix.md`, `reports/2026-11-10/behaviour-p0-limit.md`.
 

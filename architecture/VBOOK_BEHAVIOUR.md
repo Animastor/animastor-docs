@@ -1,6 +1,6 @@
 # Поведения героев в VBook (behaviour) — фаза 0
 
-Статус: **фаза 0 реализована в ветках `feat/behaviour-p0`** (backend, web, Android; 2026-11-10), в main не влита, не выкачена. Пакеты `@animastor/vbook-runtime` 0.3.0, `@animastor/editor` 0.3.0, `@animastor/assistant` 0.2.0, `@animastor/generation` 0.1.2 не опубликованы.
+Статус: **фаза 0 реализована в ветках `feat/behaviour-p0`** (backend, web, Android; 2026-11-10), в main не влита, не выкачена. Пакеты `@animastor/vbook-runtime` 0.3.0, `@animastor/editor` 0.3.0, `@animastor/assistant` 0.2.0, `@animastor/generation` 0.1.2 опубликованы в npm (12.11), backend берёт их из реестра.
 
 Основа — разведка [`VBOOK_BEHAVIOUR_RECON.md`](VBOOK_BEHAVIOUR_RECON.md) (вариант C, §8.3, §9): детерминированный матчинг правил в коде, без нового вызова LLM. Жизненный цикл файла `behavior.json` — [`../07-agents-and-generators/BEHAVIOR_JSON_LIFECYCLE.md`](../07-agents-and-generators/BEHAVIOR_JSON_LIFECYCLE.md).
 

@@ -1,6 +1,6 @@
 # Карточка героя
 
-Статус: **web реализован** в ветке `feat/hero-card` (`animastor-web` `f47d45a`, 2026-11-12) на контракте VBook v4;
+Статус: **web реализован** в ветке `feat/hero-card` (`animastor-web` `b80b24e`, 2026-11-12) на контракте VBook v4;
 **Android — спецификация** (§8, GAP в [`ANDROID_WEB_PARITY.md`](../architecture/ANDROID_WEB_PARITY.md)). Работает
 только с backend шагов 1–4 [`VBOOK_FORMAT_V4.md`](../architecture/VBOOK_FORMAT_V4.md) §12; до него не выкатывается.
 
@@ -63,6 +63,9 @@
 
 Подсказки под полями: алиасы — «как автор называет героя в тексте»; заметки — «только для вас: в генерацию не
 попадают»; тембр — «по этому тексту создаётся референс».
+
+«Манера» при закреплённом референсе на звук не влияет (клон копирует подачу референса —
+`VBOOK_FORMAT_V4.md` §5.1); подсказка поля в этом состоянии: «С закреплённым референсом подачу задаёт сама запись».
 
 ## 4. Сохранение
 
@@ -168,10 +171,10 @@
 
 ## 9. Web: что сделано и что осталось
 
-Сделано (`animastor-web` `feat/hero-card`, `f47d45a`; vitest 339/0, `tsc --noEmit` и `vite build` — без ошибок):
+Сделано (`animastor-web` `feat/hero-card`, `b80b24e`; vitest 340/0, `tsc --noEmit` и `vite build` — без ошибок):
 
 - `frontends/app/src/features/heroes/`: `heroModel.ts`, `heroApi.ts`, `HeroesPanel.tsx`, `HeroCard.tsx`,
-  `heroFixtures.ts`; тесты `heroModel.test.ts` (35), `HeroesPanel.test.tsx` (18).
+  `heroFixtures.ts`; тесты `heroModel.test.ts` (35), `HeroesPanel.test.tsx` (19).
 - `pages/EditPage.tsx` — вкладка «Герои» вместо трёх; состояние «формат не поддерживается».
 - `api/models.ts` (`heroes`, `hero_issues`, `behaviour`), `api/client.ts` (`postForm`, единый текст ошибки 3.1),
   `app/i18n.ts` (ru + en), `styles/base.css`; `api/behaviors.ts` удалён.
@@ -193,4 +196,6 @@
    текст ошибки запроса.
 4. `@animastor/web-editor` 0.2.0: убрать типы сущностей `character`, `voice`, `behavior` и `BehaviorAddDialog`
    (приложение ими больше не пользуется); ключи i18n `entity_*_character|voice|behavior`, `edit_no_characters|voices|behaviors`.
-5. Словарь эмоций отдавать с сервера (сейчас константа `BEHAVIOUR_EMOTIONS` — копия `behaviour-emotions.js`).
+5. Книги на legacy-оркестрации: команда кандидатов вернёт отказ сервера — показать его текст в блоке референса
+   (сейчас — общая строка ошибки карточки).
+6. Словарь эмоций отдавать с сервера (сейчас константа `BEHAVIOUR_EMOTIONS` — копия `behaviour-emotions.js`).

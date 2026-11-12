@@ -4,6 +4,35 @@ All notable changes to Animastor are documented here.
 
 ---
 
+## 2026-11-12
+
+### Feature (референсные голоса героев; не влито, не выкачено)
+
+- **Голос героя — один закреплённый референс, каждый чанк — клон с него.** Нормативный документ —
+  `architecture/VOICE_REFERENCES.md`. Решения владельца (§2): референсы только в папке контента
+  `build_<id>/voices/`, диктор = герой `narrator`, `locked`, генерация только по явной команде, строгая сверка
+  транскрипта, без совместимости со старыми голосами (`instruction` больше не читается).
+  - Голос: `voices.json[id] = {timbre, manner, timbre_source, reference}` через порт `@animastor/vbook-runtime/voice`
+    (при v4 меняется только порт). Описание из анализа чистится правилами (без LLM), `timbre_source: cleaned`.
+  - Кандидаты: kind `voice_reference` (orchestration v2), VoiceDesign на фразе-шаблоне языка книги (ru/en/de),
+    3 seed; нода воркера `SaveAudioAnimastorReference` (ffmpeg → WAV s16le mono 24 кГц, faster-whisper,
+    JSON в RIFF); backend вырезает LIST, считает sha256 хранимого файла, сверяет транскрипт строго.
+  - Озвучка: нарратор — Base + `LoadAudio` → `VoiceClonePrompt` → `VoiceClone`; диалог — слоты `LoadAudio`,
+    неиспользуемые слоты удаляются, VoiceDesign в рабочих workflow не грузится; язык книги → `target_language`.
+    Нет закреплённого референса → `409 voice_reference_required` (`character_ids`, `reasons`), без фолбэка.
+    Референсы приходят воркеру как `input_files`. Legacy-оркестрация аудио больше не делает.
+  - «Очистить кэш» и cleanup не трогают `voices/`; удаление — только с книгой.
+  - API `/api/v1/book/:id/voices/references…` (список, кандидаты, загрузка, прослушивание, закрепление,
+    открепление, удаление). Web — блок во вкладке «Голоса»; Android — `timbre`/`manner`, блок — GAP.
+  - Установка `audio/qwen-tts` 2026.11.12-r1: нода `animastor-voice-ref` из подкаталога репозитория (установщик
+    0.2.11), faster-whisper small (sha256-пин), 4 workflow, VRAM 12 → 8 ГБ (оценка).
+  - Пакеты (не опубликованы): `@animastor/vbook-runtime` 0.4.0, `animastor-comfyui-workflow-connector` 0.2.0,
+    `@animastor/generation` 0.2.0, `@animastor/orchestration` 1.4.0, `@animastor/editor` 0.4.0,
+    `@animastor/installer` 0.2.11, `@animastor/web-editor` 0.2.0.
+  - Отчёты: `reports/2026-11-12/voice-references-recon.md`, `reports/2026-11-12/voice-references.md`.
+
+---
+
 ## 2026-11-09
 
 ### Feature (orch v2, этап 3a — видео; не влито, не выкачено)

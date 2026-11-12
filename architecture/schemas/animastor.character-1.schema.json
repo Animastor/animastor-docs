@@ -37,6 +37,14 @@
     "passport": {
       "$ref": "#/$defs/passport"
     },
+    "looks": {
+      "type": "array",
+      "maxItems": 32,
+      "items": {
+        "$ref": "#/$defs/look"
+      },
+      "description": "Именованные облики героя — перекрытия паспорта (VBOOK_FORMAT_V4.md §4a). Только у героя с passport; id обликов уникальны внутри героя (проверяет валидатор)."
+    },
     "voice": {
       "$ref": "#/$defs/voice"
     },
@@ -93,6 +101,23 @@
         },
         "required": [
           "role"
+        ]
+      }
+    },
+    {
+      "if": {
+        "required": [
+          "looks"
+        ],
+        "properties": {
+          "looks": {
+            "minItems": 1
+          }
+        }
+      },
+      "then": {
+        "required": [
+          "passport"
         ]
       }
     }
@@ -368,6 +393,109 @@
         "note": {
           "type": "string",
           "maxLength": 500
+        }
+      },
+      "additionalProperties": true
+    },
+    "lookId": {
+      "type": "string",
+      "pattern": "^[a-z0-9]+(?:_[a-z0-9]+)*$",
+      "maxLength": 64,
+      "not": {
+        "const": "base"
+      },
+      "description": "Id облика внутри героя. base зарезервирован за базовым паспортом."
+    },
+    "lookFields": {
+      "type": "object",
+      "minProperties": 1,
+      "additionalProperties": false,
+      "description": "Поля, которые облик заменяет ЦЕЛИКОМ. Отсутствующее поле берётся из базового паспорта.",
+      "properties": {
+        "appearance": {
+          "type": "string",
+          "minLength": 1
+        },
+        "clothes": {
+          "type": "string",
+          "minLength": 1
+        },
+        "video_tokens": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 4,
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        }
+      }
+    },
+    "look": {
+      "type": "object",
+      "required": [
+        "id",
+        "label",
+        "fields"
+      ],
+      "properties": {
+        "id": {
+          "$ref": "#/$defs/lookId"
+        },
+        "label": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 120
+        },
+        "fields": {
+          "$ref": "#/$defs/lookFields"
+        },
+        "image_ref": {
+          "oneOf": [
+            {
+              "type": "null"
+            },
+            {
+              "$ref": "#/$defs/imageRef"
+            }
+          ],
+          "description": "Референс-картинка облика; генерация — будущая задача."
+        },
+        "notes": {
+          "type": "string",
+          "maxLength": 2000
+        },
+        "evidence": {
+          "type": "object",
+          "description": "Откуда облик: цитата из текста (будущая автоматизация, §4a.6).",
+          "properties": {
+            "quote": {
+              "type": "string",
+              "maxLength": 1000
+            },
+            "chapter_id": {
+              "type": "string"
+            },
+            "scene_id": {
+              "type": "string"
+            },
+            "unit_id": {
+              "type": "string"
+            },
+            "basis": {
+              "enum": [
+                "explicit",
+                "inferred"
+              ]
+            },
+            "status": {
+              "enum": [
+                "suggested",
+                "accepted"
+              ]
+            }
+          },
+          "additionalProperties": true
         }
       },
       "additionalProperties": true

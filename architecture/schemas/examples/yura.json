@@ -16,6 +16,35 @@
       "leather jacket"
     ]
   },
+  "looks": [
+    {
+      "id": "coat",
+      "label": "В пальто",
+      "fields": {
+        "clothes": "long dark grey wool coat, scarf",
+        "video_tokens": [
+          "man",
+          "dark hair",
+          "grey coat"
+        ]
+      },
+      "image_ref": null,
+      "notes": "С третьей главы."
+    },
+    {
+      "id": "beard",
+      "label": "С бородой",
+      "fields": {
+        "appearance": "man in his early thirties, short dark hair, thick dark beard, tired grey eyes"
+      },
+      "image_ref": null,
+      "evidence": {
+        "quote": "За зиму он оброс бородой и стал похож на геолога.",
+        "basis": "explicit",
+        "status": "accepted"
+      }
+    }
+  ],
   "voice": {
     "timbre": "A Russian male voice in his early thirties, warm low baritone. Native Russian pronunciation.",
     "manner": "Speaks unhurriedly, with a tired half-smile, pauses before important words.",

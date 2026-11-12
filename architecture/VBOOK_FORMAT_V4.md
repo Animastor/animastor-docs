@@ -46,7 +46,7 @@ characters/
   narrator.json          диктор — создаётся всегда
   yura.json              один файл на героя
 chapters/
-  ch-XXXXXXXX.json
+  ch-XXXXXXXX.json  chapter.looks, scene.looks, scene.look_patch — назначение обликов (§4a)
 source.txt               необязателен (исходный текст для продолжения анализа)
 ```
 
@@ -97,7 +97,8 @@ source.txt               необязателен (исходный текст �
 | `name` | нет | имя для людей | нет |
 | `role` | нет | свободный текст; `narrator` зарезервировано за диктором | нет |
 | `aliases` | нет | как автор называет героя в тексте (бывший `mentions.json`, §7) | анализ (сопоставление героев) |
-| `passport` | нет | `appearance`, `clothes`, `video_tokens` (массив 1–4) | картинки, видео |
+| `passport` | нет | базовая внешность: `appearance`, `clothes`, `video_tokens` (массив 1–4) | картинки, видео |
+| `looks` | нет | именованные облики — перекрытия паспорта (§4a) | картинки, видео |
 | `voice` | нет | `timbre`, `manner`, `reference` (§5) | аудио |
 | `behaviour.profile` | нет | характер: `baseline`, `quirks`, `reactions` | нет (ассистент) |
 | `behaviour.rules` | нет | правила героя (§6.2) | видео (через `unit.behaviour`) |
@@ -120,6 +121,158 @@ source.txt               необязателен (исходный текст �
 
 **Неизвестные ключи** сохраняются при чтении и записи, валидатор сообщает о них предупреждением `unknown_key`
 (опечатка в ручной правке видна, новая версия формата не ломает старый сервер).
+
+---
+
+## 4a. Облики героя (перекрытия паспорта)
+
+По умолчанию действует базовый паспорт. По ходу книги внешность меняется (одежда, борода, ранение) — для этого в
+файле героя лежат **именованные облики**, а главы и сцены на них ссылаются.
+
+### 4a.1 Что было (разведка)
+
+Три места хранения:
+
+| Место | Кто пишет | Кто читает |
+|---|---|---|
+| `chapter.character[id]` | **никто** (ни пайплайн, ни редактор, ни фронты) | `prompt-builder.js` `resolvePassport` |
+| `scene.visual.character[id]` | **никто** | `prompt-builder.js` `resolvePassport` |
+| `scene.passport[id]` (`appearance`, `clothes`, `video_tokens`) | редактор сцены на web и Android (`PATCH /scene … passport.<id>.<поле>`, `scene-patch-utils.cjs`); шаг `passport_reconciliation` — автоматически, только `video_tokens` (`pipeline-runner.js` `applySceneVideoTokens`) | все четыре резолвера ниже |
+
+Четыре резолвера с разными правилами:
+
+| Резолвер | Поля | Порядок |
+|---|---|---|
+| `backend/src/image/prompt-builder.js` `resolvePassport` | `appearance`, `clothes` | `scene.passport` → `scene.visual.character` → `chapter.character` → паспорт; пустая строка в первом источнике **останавливает** поиск (`??`), в остальных — нет |
+| `backend/src/workflows/video/video-workflows.js` `buildCharLines` | `video_tokens` | `scene.passport` → паспорт; главу и `scene.visual` не видит; при совпадении набора токенов у двух участников — откат к базовым |
+| `backend/src/services/agent/pipeline-steps.js` (текущие токены для промпта сверки) | `video_tokens` | `scene.passport` → `passport.video_tokens` → плоское `video_tokens` героя окна |
+| `backend/src/services/agent/pipeline-runner.js` `applySceneVideoTokens` (сравнение перед записью) | `video_tokens` | то же |
+
+У `@animastor/editor` своего резолвера нет: его тест `scene-passport-patch.test.js` вызывает `resolvePassport` из
+`prompt-builder.js`. Реестр инвалидации следит только за `scene.passport` и `characters.passport` — перекрытия главы
+и `scene.visual.character` не дали бы dirty, даже если бы их кто-то писал.
+
+### 4a.2 Облик
+
+```json
+"looks": [
+  { "id": "beard", "label": "С бородой",
+    "fields": { "appearance": "…", "clothes": "…", "video_tokens": ["…"] },
+    "image_ref": null, "notes": "" }
+]
+```
+
+| Поле | Обяз. | Смысл |
+|---|---|---|
+| `id` | да | snake_case, уникален внутри героя; `base` зарезервирован за базовым паспортом |
+| `label` | да | название для людей |
+| `fields` | да, хотя бы одно поле | `appearance`, `clothes`, `video_tokens` — каждое **целиком заменяет** поле базового паспорта; отсутствующее берётся из базового |
+| `image_ref` | нет | референс-картинка облика (форма `image_refs[]`); генерация — будущая задача |
+| `notes` | нет | заметки человека, в промпты не идут |
+| `evidence` | нет | цитата-основание (§4a.6) |
+
+Решения:
+
+- **Замена поля, не склейка.** Облик «в пальто» несёт полный текст `clothes`. Дописывание к базовому тексту даёт
+  противоречия («кожаная куртка» + «пальто») — ровно то, от чего страдают картинки.
+- **Пустых значений нет** (минимум один символ, минимум один токен). «Без одежды» пишется словами. Так уходит
+  нынешняя двусмысленность пустой строки.
+- **Облики — только у героя с `passport`.**
+- **Облик не наследует другой облик.** Нужны «борода» и «пальто» одновременно — третий облик. Цепочки сделали бы
+  итог непредсказуемым для человека и для инвалидации.
+
+### 4a.3 Назначение
+
+```
+chapter.looks = { "<hero_id>": "<look_id>" }          глава
+scene.looks   = { "<hero_id>": "<look_id>" | "base" } сцена; "base" — базовый паспорт вопреки главе
+```
+
+Сцена важнее главы; без ссылок — базовый паспорт. Назначение хранится в главе и сцене, а не в файле героя: сцена
+остаётся самодостаточной для сборки промпта и для инвалидации, а карточка строит «где действует» обходом глав.
+
+Рассмотрено и отклонено: «облик действует с этой сцены и до следующей смены». Это потребовало бы порядка сцен в
+резолвере, а правка одного назначения делала бы грязными все сцены до конца книги. Назначение на диапазон глав —
+действие интерфейса (несколько ссылок за одну операцию), а не свойство формата.
+
+Ссылка на несуществующий облик не ломает книгу: резолвер идёт дальше по порядку и возвращает предупреждение
+`unknown_look`. Удаление облика через API снимает все ссылки на него (сначала главы, потом файл героя — обрыв
+между ними оставляет безвредные висячие ссылки).
+
+### 4a.4 Разовая правка в сцене
+
+```
+scene.look_patch = { "<hero_id>": { "appearance"?, "clothes"?, "video_tokens"? } }
+```
+
+Заменяет поля поверх выбранного облика, только в этой сцене. Оставлена, потому что у неё два действующих
+пользователя:
+
+1. шаг `passport_reconciliation` разводит `video_tokens` участников **одной сцены** («у обоих галстук») — это не
+   облик героя, а подгонка под состав кадра;
+2. человек правит мелочь в одной сцене (снял шляпу) в редакторе сцены — блоки «паспорт в сцене» на web и Android.
+
+Правила значений — как у `fields` облика. `scene.passport`, `chapter.character`, `scene.visual.character`
+**удаляются**; совместимости нет.
+
+### 4a.5 Один резолвер
+
+`@animastor/vbook-runtime`, `src/looks.cjs`, чистая функция:
+
+```
+resolveHeroLook(book, chapter, scene, heroId) → {
+  hero_id, look_id,                 // id облика или "base"
+  source,                           // "scene" | "chapter" | "base" — откуда взят облик
+  appearance, clothes, video_tokens,// итог: паспорт ← fields облика ← look_patch сцены
+  base: { appearance, clothes, video_tokens },
+  changed: [...],                   // поля, отличные от базового паспорта
+  patched: [...],                   // поля, пришедшие из look_patch
+  image_ref,                        // референс облика, иначе null
+  warnings: [...]                   // unknown_look
+} | null                            // героя нет или у него нет passport
+```
+
+Порядок: `scene.looks[id]` → `chapter.looks[id]` → `base`; затем `fields` облика поверх паспорта; затем
+`scene.look_patch[id]` поверх результата.
+
+На него переходят все четыре резолвера §4a.1 и карточка (её клиентская копия — `resolveLook` в `heroModel.ts`, те же
+фикстуры). Остаётся у потребителей, потому что это не разрешение облика:
+
+- `prompt-builder.js` — отбрасывание текстов-заглушек (`helpers.isPlaceholder`) и склейка описания;
+- `video-workflows.js` — защита от одинаковых наборов токенов у двух участников; запасной вариант берётся из
+  `base.video_tokens` результата.
+
+`resolveState` (`scene.state[id]` / `chapter.state[id]` в `prompt-builder.js`) — не внешность, не трогается.
+
+**Инвалидация** (`prompt-dependency-registry.js`). Ключи `characters.passport` и `scene.passport` заменяются одним
+**производным ключом сцены** `scene.resolved_looks` → слои **image и video**, аудио не затрагивается:
+
+```
+extract(scene, { book, chapter }) = участники сцены с passport →
+    { [hero_id]: { appearance, clothes, video_tokens } }   // из resolveHeroLook
+```
+
+Сравнивается итог, а не источники, поэтому грязными становятся ровно те сцены, где итоговая внешность участника
+изменилась: правка полей облика — сцены, где он действует; назначение на главу — сцены главы без собственной ссылки;
+правка базового поля — только сцены, где его не перекрывает облик (сегодня правка паспорта помечает все сцены
+героя). `label`, `notes`, `image_ref`, `evidence` и облик, который нигде не назначен, dirty не дают. Реестру для
+этого нужен контекст книги и главы в `extract` (сейчас — только сцена).
+
+### 4a.6 Будущее: облики из текста (не реализуется сейчас)
+
+Идея из LocalText2Voice (`storyboard_character_changes.py`, разбор — `reports/2026-11-12/localtext2voice-recon.md`
+§«Изменения внешности»): LLM ищет в тексте только **явные** изменения внешности (одежда, волосы, возраст,
+физические) и обязан привести **точную цитату**; хост проверяет, что цитата дословно и единственным образом
+находится в исходном тексте, и привязывает её к IU. Невизуальное (характер, отношения) отбрасывается.
+
+Место в формате уже есть — `look.evidence = {quote, chapter_id, scene_id, unit_id, basis: "explicit" | "inferred",
+status: "suggested" | "accepted"}`:
+
+- предложенный облик — обычный облик со `status: "suggested"`, никуда не назначенный, поэтому на генерацию не
+  влияет;
+- карточка показывает его с цитатой; «Принять» ставит `accepted` и назначает на главы и сцены от места цитаты;
+  «Отклонить» удаляет;
+- запуск поиска — явная команда пользователя, отдельным шагом анализа, после стабилизации v4.
 
 ---
 
@@ -262,7 +415,7 @@ book = { manifest, book, bible, locations, behaviour, heroes[], hero_issues[], c
   `hero_issues[]` — проблемы загрузки (§10.3), на диск не пишется.
 - `book.characters`, `book.voices`, `book.behaviors`, `book.mentions` **удаляются**.
 - Доступ читателей — через хелперы `vbook-runtime` (`heroes.cjs`), а не обходом массива по месту:
-  `findHero(book, id)`, `passportHeroes(book)` (герои с `passport` — замена прежнего `book.characters`),
+  `findHero(book, id)`, `resolveHeroLook(book, chapter, scene, id)` (§4a.5), `passportHeroes(book)` (герои с `passport` — замена прежнего `book.characters`),
   `voiceInstruct(hero)`, `narrator(book)`, `buildAliasIndex(heroes)`, `heroRules(book)`.
 
 Читателей прежних карт немного, и все они — простые выборки по id (полный список — §11).
@@ -281,13 +434,17 @@ book = { manifest, book, bible, locations, behaviour, heroes[], hero_issues[], c
 | `PATCH /book/:id/heroes/:heroId` | `{fields, if_rev?}`; пути по белому списку: `name`, `role`, `aliases`, `notes`, `passport.appearance`, `passport.clothes`, `passport.video_tokens`, `voice.timbre`, `voice.manner`, `behaviour.profile.baseline`, `behaviour.profile.quirks`, `behaviour.profile.reactions`; `passport: null` / `voice: null` снимают блок; 409 `rev_conflict` |
 | `DELETE /book/:id/heroes/:heroId` | удалить файл героя; 409 `narrator_required`; `?broken=1` — удалить битый файл |
 | `POST /book/:id/heroes/:heroId/rules` · `PATCH …/rules/:ruleId` · `DELETE …/rules/:ruleId` | правила героя; `PATCH {enabled}` — выключатель в карточке |
+| `POST /book/:id/heroes/:heroId/looks` · `PATCH …/looks/:lookId` · `DELETE …/looks/:lookId` | облики: создать `{id?, label, fields}`; править `{fields: {label, notes, "fields.appearance", "fields.clothes", "fields.video_tokens"}}` (`null` убирает поле из облика; последнее поле убрать нельзя — 400 `look_empty`); удалить — снимает все ссылки, в ответе `unassigned` |
+| `POST /book/:id/looks/assign` | назначить: `{hero_id, look_id, chapters: [chapter_id], scenes: [{chapter_id, scene_id}]}`; `look_id: "base"` для сцены — базовый вопреки главе; `look_id: null` — снять ссылку. Одна операция на любой набор глав и сцен; в ответе `dirty_scenes` |
+| `PATCH /book/:id/scene/:chapterId/:sceneId` (существующий) | поля `looks.<hero_id>` и `look_patch.<hero_id>.<поле>` вместо `passport.<hero_id>.<поле>` |
 | `GET /book/:id/behaviour` · `PATCH /book/:id/behaviour` | глобальные дефолты и правила |
 | референс голоса и кандидаты | заводит задача референсных голосов; что ждёт карточка — `HERO_CARD.md` §6 |
 | `POST /book/:id/heroes/:heroId/image-refs` (multipart) · `PATCH …/:index` · `DELETE …/:index` | референс-картинки |
 
 Удаляются: `POST/PATCH/DELETE /characters`, `/voices`, `/behaviors`.
 
-Dirty: `passport.*` → image + video; `voice.timbre`, `voice.manner`, `voice.reference.sha256` → audio; `name`, `role`,
+Dirty: внешность — по производному ключу `scene.resolved_looks` (§4a.5): `passport.*`, поля обликов, назначения и
+`look_patch` → image + video тех сцен, где изменился итог; `voice.timbre`, `voice.manner`, `voice.reference.sha256` → audio; `name`, `role`,
 `aliases`, `notes`, `image_refs`, `behaviour.*` — ни один слой (сработавшие правила — снимок в IU).
 
 `PUT /book/:id`: тело без `heroes` не меняет героев; пустой массив `heroes` при непустом каталоге — 400 (защита от
@@ -394,11 +551,12 @@ Dirty: `passport.*` → image + video; `voice.timbre`, `voice.manner`, `voice.re
 | | `src/character-identity.js` | слияние героев; читает `alias`, `aliases`, `description`, `appearance`, `traits`, `voice` | 2 |
 | | `src/snake-guard.js` | реестр id из `characters.json` | 2 |
 | | `src/lazy-book/create.js` | пишет `characters.json`, `voices.json`, `mentions.json`, `behavior.json` напрямую | 1 |
+| | `src/lazy-book/create.js` (сцена) | переносит `aiScene.passport` в `scene.passport` | 1 |
 | | `src/lazy-book/{draft,status,paths}.js` | черновая загрузка всех файлов, счётчик упоминаний, пути | 1 |
 | | `schemas/vbook-bundle-3.1.schema.json` | `behaviors` описан как произвольная карта — отстал от v2 | 1 (заменяется) |
 | backend, `editor` | `src/editor-routes.cjs` | `GET /book` (проекция поведений), `PUT /book` (слияние паспортов), `PATCH /characters`, `/voices`, `/behaviors` | 4 |
 | | `src/entity-crud-routes.cjs` | `POST/DELETE /characters`, `/voices`, `/behaviors`; каскад удаления героя | 4 |
-| | `src/entity-id.js`, `scene-patch-utils.cjs` | грамматика id; нормализация `video_tokens` | 1, 4 |
+| | `src/entity-id.js`, `scene-patch-utils.cjs` | грамматика id; нормализация `video_tokens`, в т. ч. в `passport.<id>.video_tokens` сцены | 1, 4 |
 | backend, `assistant` | `src/chat-engine.cjs` | промпт о `behaviors.characters`, список героев в контексте, страж путей `edit_book`, каскад | 4 |
 | | `src/assistant-routes.cjs` | проверка бандла после патчей | 4 |
 | backend, `ai-analysis` | `tasks/character-analyzer/{index,voices}.js` | извлечение героев и упоминаний; голоса в `characters[i].voice` | 2 |
@@ -408,16 +566,17 @@ Dirty: `passport.*` → image + video; `voice.timbre`, `voice.manner`, `voice.re
 | backend | `services/agent/{bootstrap,pipeline-runner,pipeline-steps,parallel-analysis-orchestrator}.js` | герои и упоминания между окнами (PG `all_mentions`), голос диктора | 2 |
 | | `services/agent/{behaviour-rules,behaviour-apply}.js` | эффективные правила из `behavior.json` | 3 |
 | | `audio/{segments,generation}.js` | три копии выбора `voices[id].instruction` с резервом `characters[i].voice` | 3 |
-| | `image/prompt-builder.js`, `workflows/video/video-workflows.js` | паспорт по id | 3 |
+| | `image/prompt-builder.js`, `workflows/video/video-workflows.js` | паспорт по id и перекрытия (§4a.1) | 3 |
+| | `services/agent/pipeline-steps.js`, `pipeline-runner.js` (`applySceneVideoTokens`), `ai/rules/passport_reconciliation.md` | шаг сверки читает и пишет `scene.passport[id].video_tokens` | 2 |
 | | `services/assistant-ports.cjs` | третий прямой писатель файлов книги («zero-chapter fallback»), `behavior.json` в его списке нет | 4 |
 | | `services/txt-importer.js`, `ai-service.js` | удаление частичного `characters.json`; примеры `ai/examples/*` для промпта импорта | 2 |
 | | `routes/book/{import,export}-routes.cjs`, `routes/generation-routes.cjs` | импорт (два дублирующих маршрута + третий), экспорт каталога целиком | 1 |
 | | `services/task-handler.cjs` | снимки `<book_id>.snapshot.json` — сериализованная модель | 1 |
 | | `scripts/audit-video-actions.js` | аудит `mentions.json` и `characters.json` | 3 |
 | | `ai/rules/{characters,voice_generation,visuals}.md`, `ai/examples/*` | правила и примеры для LLM | 2 |
-| web | `frontends/app/src/pages/EditPage.tsx` | вкладки «Персонажи», «Голоса», «Поведение»; блоки паспорта во вкладке «Сцена» | 5 |
+| web | `frontends/app/src/pages/EditPage.tsx` | вкладки «Персонажи», «Голоса», «Поведение»; блоки «паспорт в сцене» (`scene.passport`) во вкладке «Сцена» | 5 |
 | | `api/{models,behaviors}.ts`, `packages/animastor-web-editor` | типы, фильтр служебных ключей, диалоги сущностей | 5 |
-| Android | `repository/{BookModels,BehaviorEntries,BackendApi,Repository}.kt`, `ui/EditFragment.kt` | модели Gson, те же три вкладки, `PUT /book` | 6 |
+| Android | `repository/{BookModels,BehaviorEntries,BackendApi,Repository}.kt`, `ui/EditFragment.kt` | модели Gson (`Scene.passport`), те же три вкладки и блоки паспорта сцены, `PUT /book` | 6 |
 | worker, gpu-hub | — | данных героя не читают | — |
 | PG | `character_mentions`, `character_window_candidates`, `sentence_resolutions` | рабочие таблицы анализа | не трогаются |
 
@@ -443,6 +602,10 @@ Dirty: `passport.*` → image + video; `voice.timbre`, `voice.manner`, `voice.re
 | Н16 | `loadBook` возвращает `null` и при «книги нет», и при любой ошибке чтения | `index.js`, `book-model.cjs` | **v4** — для версии (§9); остальные ошибки — позже |
 | Н17 | `book.json.defaults.narration_voice` — ещё одно место «голоса диктора», никем не читается | `book.json` | позже (проверить и удалить) |
 | Н18 | Каталог книги на проде принадлежит то `root`, то `animastor` | `data/books` | эксплуатация, вне формата |
+| Н20 | Перекрытия паспорта в трёх местах, из них два (`chapter.character`, `scene.visual.character`) никто не пишет | `prompt-builder.js` | **v4** (§4a) |
+| Н21 | Четыре резолвера внешности с разными правилами: картинки не видят `video_tokens`, видео не видит главу, пустая строка где-то останавливает поиск, где-то нет | `prompt-builder.js`, `video-workflows.js`, `pipeline-steps.js`, `pipeline-runner.js` | **v4**: `resolveHeroLook` |
+| Н22 | Реестр инвалидации не следит за перекрытиями главы и `scene.visual.character`; правка базового паспорта помечает все сцены героя, даже перекрытые | `prompt-dependency-registry.js` | **v4**: `scene.resolved_looks` |
+| Н23 | `scene.passport[id].video_tokens` пишет и человек, и шаг сверки — одно поле на «облик» и на «подгонку под кадр» | `pipeline-runner.js`, редактор сцены | **v4**: облик / `look_patch` |
 | Н19 | Очистка кэша удаляет `build_<book_id>` целиком — вместе с референсами | `cache-routes.cjs`, `cleanup-service.cjs` | **v4** (§5.2), задача референсных голосов |
 
 ---
@@ -466,6 +629,7 @@ Dirty: `passport.*` → image + video; `voice.timbre`, `voice.manner`, `voice.re
 
 ### Шаг 1 — `vbook-runtime` 0.4.0: формат
 
+- `src/looks.cjs` — `resolveHeroLook` (§4a.5), проверка обликов и ссылок.
 - `src/heroes.cjs` (хелперы §8.1, `CANONICAL_ID_RE`, `RESERVED_HERO_IDS`), `src/character-store.cjs` (чтение
   каталога, атомарная запись, `update`, `remove`), `src/bundle-validator.cjs` (`validateCharacterFile`,
   `validateBehaviourGlobals`), `assertSupportedVbookVersion`, `BookModelError('UNSUPPORTED_VBOOK_VERSION')`.
@@ -484,6 +648,9 @@ Dirty: `passport.*` → image + video; `voice.timbre`, `voice.manner`, `voice.re
   - 1.5 схема и ручной валидатор дают одинаковый вердикт на общих фикстурах; три примера из docs валидны;
   - 1.6 битый файл героя: книга открывается, `hero_issues`, запись 409, файл не изменился, экспорт 409 и
     `skip_broken`;
+  - 1.8 `resolveHeroLook`: таблица случаев — база; облик главы; облик сцены важнее главы; `"base"` в сцене вопреки
+    главе; `look_patch` поверх облика; неизвестный облик → следующий источник + `unknown_look`; герой без паспорта →
+    `null`; вход не мутируется;
   - 1.7 одновременная точечная запись героя A и героя B — обе сохранены; обрыв записи (исключение между записью
     временного файла и `rename`) оставляет прежний файл целым.
 
@@ -493,6 +660,8 @@ Dirty: `passport.*` → image + video; `voice.timbre`, `voice.manner`, `voice.re
 
 - `voice_generation.md` и `character-analyzer/voices.js` — `{timbre, manner}`; диктор — те же поля.
 - `create.js` получает героев окна и пишет файлы; алиасы — из упоминаний (§7).
+- Шаг `passport_reconciliation` читает текущие токены через `resolveHeroLook` и пишет результат в
+  `scene.look_patch[id].video_tokens` (только при отличии от итога, как сегодня).
 - Примеры `ai/examples/` — в форме v4 (`characters/*.json`, `behaviour.json`).
 - Приёмка:
   - 2.1–2.5 существующие тесты анализа, переведённые на героев, зелёные;
@@ -504,13 +673,17 @@ Dirty: `passport.*` → image + video; `voice.timbre`, `voice.manner`, `voice.re
 backend (`audio/*`, `image/prompt-builder.js`, `workflows/video/video-workflows.js`,
 `services/agent/behaviour-*.js`, `scripts/audit-video-actions.js`), `generation` → **0.2.0**.
 
-- Читатели — через хелперы §8.1; реестр инвалидации — ключи §8.2.
+- Читатели — через хелперы §8.1; внешность — только через `resolveHeroLook`; `resolvePassport` и выбор токенов в
+  `buildCharLines` удаляются. Реестр инвалидации — ключи §8.2 и производный `scene.resolved_looks` (§4a.5;
+  `extract` получает книгу и главу).
 - Приёмка: для книги-фикстуры в форме v4 промпты image и video совпадают с эталоном 3.1 той же книги; текст для
-  TTS равен `join(timbre, manner)`; тест реестра на каждое поле героя; `behaviour-p0.test.js` зелёный на v4.
+  TTS равен `join(timbre, manner)`; тест реестра на каждое поле героя; облики: правка поля облика помечает image + video только сцен, где он действует,
+  назначение на главу — сцены главы без своей ссылки, правка перекрытого базового поля — ничего, `label` / `notes` —
+  ничего, audio не помечается ни в одном случае; `behaviour-p0.test.js` зелёный на v4.
 
 ### Шаг 4 — `editor` 0.4.0, `assistant` 0.3.0: API героя
 
-- Маршруты §8.2, удаление старых; `GET`/`PUT /book`; страж путей и промпт ассистента; `assistant-ports.cjs` через
+- Маршруты §8.2 (включая облики и `looks/assign`), удаление старых; `GET`/`PUT /book`; страж путей и промпт ассистента; `assistant-ports.cjs` через
   `characterStore`.
 - Приёмка: контрактные тесты каждого маршрута и кода ошибки из §8.2, §9, §10.3; `rev_conflict`; диктора нельзя
   удалить; `edit_book` по `/heroes/<id>/…`; отказ по старым путям.
@@ -526,7 +699,7 @@ APK ≤ 0.2.9 с новым backend не работает (нет `characters` /
 
 ### Шаг 7 — после релиза
 
-Референс-картинки (маршруты `image-refs`, раздача файла с проверкой доступа); использование `image_refs` в генерации
+Облики из текста по цитате (§4a.6) — отдельная задача. Референс-картинки (маршруты `image-refs`, раздача файла с проверкой доступа); использование `image_refs` в генерации
 — отдельная задача.
 
 ### Порядок публикации пакетов (владелец)

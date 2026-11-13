@@ -4,6 +4,22 @@ All notable changes to Animastor are documented here.
 
 ---
 
+## 2026-11-13
+
+### Changed (backend + vbook-runtime; не выкачено)
+
+- **Усилена проверка входных данных импорта.** `@animastor/vbook-runtime` **0.2.1** (прод-линия), 0.3.1
+  (`feat/behaviour-p0`), в составе 0.4.0 (`feat/voice-references`); backend — общая проверка идентификаторов в запросах,
+  лимиты загрузки. `.vbook` принимается в составе формата 3.1. Профиль — `architecture/AUTH_IMPLEMENTATION.md` §2–3, §5.
+- **Изменение поведения:** импорт (`/book/import`, `import-txt`, `import-text`, `load-vbook`, `/generate`) и выгрузка
+  книги (`download`, `storyboard`, `audio`, `export`) — только для вошедшего пользователя (гость и аноним — 401
+  `login_required`); запросы без идентичности к данным книг — 401, список книг — пустой; `/api/v1/debug/*` — только
+  администратор.
+- **Web + Android (паритет):** любой 401 вне `/auth/*` один раз открывает окно входа; ошибка импорта —
+  «Импорт и скачивание книг доступны после входа в аккаунт». Web `071d6eb`, Android 0.2.9 (11) `31263b3`.
+- Удаление книги и очистка кэша затрагивают только файлы этой книги в каталоге результатов.
+- Тесты backend больше не обращаются к внешним сервисам.
+
 ## 2026-11-12
 
 ### Feature (референсные голоса героев; не влито, не выкачено)
@@ -34,6 +50,41 @@ All notable changes to Animastor are documented here.
 Уточнение 13.11 (в том же документе, §10): аудио-нода на V100 (sm_70) — **torch не выше 2.10 для сборок cu128**, так как
 PyTorch 2.11 убрал Volta из cu128/cu129 (V100 остаётся только на cu126). Симптом нарушения —
 `no kernel image is available for execution on the device`.
+
+## 2026-11-10
+
+### Feature (поведения героев, фаза 0; ветка `feat/behaviour-p0` влита в main 13.11, не выкачено)
+
+- **Поведения героев — детерминированное применение к видео** (`architecture/VBOOK_BEHAVIOUR.md`; основа — разведка
+  `architecture/VBOOK_BEHAVIOUR_RECON.md`, вариант C, влита в main 10.11).
+  - **`behavior.json` v2**: `{schema_version: 2, rules, characters}` на диске и в памяти; файл v2.1 мигрирует при загрузке
+    (все ключи → `characters`), сохраняется всегда v2; экспорт `.vbook` — формат диска, импорт старых — миграция.
+    **API без изменений для клиентов**: `GET /book` отдаёт `behaviors` плоской картой героев + `behavior_rules` (только
+    чтение) — решение владельца 10.11, иначе Android ≤ 0.2.8 не разберёт книгу. `PUT /book` раскладывает плоскую карту в
+    `characters` и не теряет `rules`; без `behaviors` хранимый документ не меняется (раньше сбрасывался в `{}`).
+    Редактор (POST/PATCH/DELETE, каскад удаления героя) и ассистент (`edit_book`, страж путей v2.1) — `characters.<id>`.
+  - **Правила** `{id, scope, character_id?, when:{emotion, unit_type?}, then:{action}, strength, probability, cooldown_iu,
+    priority, enabled?}`; дефолты `backend/ai/examples/behaviour-rules.json` — 7 глобальных правил-жестов (EN, без
+    внешности/одежды; `probability 0.25`, `cooldown_iu 4`, `strength 0.6`); 9 правил примера `behavior.json` — образец
+    `behaviour-rules.example.json`, не загружается (ни матчером, ни промптом импорта); эффективные = дефолты ⊕ правила
+    книги по `id` (поверхностное слияние, `enabled:false` выключает). Удаление героя (редактор и `edit_book`) удаляет и
+    его правила `scope:"character"`.
+  - **`unit.state`** — эмоция героя в IU из словаря 15 EN-слов; возвращается шагом `visuals` в том же вызове LLM,
+    валидируется хостом.
+  - **Матчер** — чистая функция: `seed = sha256(book:rule:unit)`, порог `probability`, `strength 0` = выкл., cooldown по
+    (правило, герой) внутри сцены, одно поведение на героя в IU (priority, затем id), пропуск `behaviour_locked`/заполненных IU,
+    снимок `action`; **лимит на сцену** `max_per_scene` (дефолт 2, книга переопределяет `defaults.max_per_scene`, `0` —
+    выкл.; считается по IU, внутри IU — priority, id; заполненные и заблокированные IU входят в счёт). Вызов — один хук после всех LLM-шагов окна в **обоих** путях раннера; только IU окна; без правил — no-op.
+  - **Видео**: фразы `<character_id> <action>` дописываются к строке сториборда; `video.action`, картинки не меняются.
+  - **Инвалидация**: `unit.behaviour` → только video; `unit.state`, `unit.behaviour_locked` → ни один слой; правка правил
+    dirty не ставит.
+  - Web и Android фильтруют служебные ключи (паритет — `ANDROID_WEB_PARITY.md`, «Открытые GAP» 2026-11-10); Android
+    0.2.9 (versionCode 11), `BookData.behaviors` — сырой `JsonElement`.
+  - Пакеты: `@animastor/vbook-runtime` 0.3.0, `@animastor/editor` 0.3.0, `@animastor/assistant` 0.2.0,
+    `@animastor/generation` 0.1.2 — опубликованы владельцем 12.11 (tarball'ы из npm совпадают с `packages/*` ветки);
+    backend берёт их из реестра (`^0.3.0`/`^0.3.0`/`^0.2.0`/`^0.1.2`), `backend/.npmrc` удалён.
+  - Документы: `architecture/VBOOK_BEHAVIOUR.md` (новый), `07-agents-and-generators/BEHAVIOR_JSON_LIFECYCLE.md`
+    (переписан), `architecture/PHASE_2_CONTRACTS.md` (строка `behavior.json`). Отчёты: `reports/2026-11-10/behaviour-p0.md`, `reports/2026-11-10/behaviour-p0-fix.md`, `reports/2026-11-10/behaviour-p0-limit.md`.
 
 ---
 

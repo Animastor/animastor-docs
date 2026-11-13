@@ -143,8 +143,10 @@ book list. Dev books still belong to the seeded developer workspace.
 3. `/api/v1/worker/*`, connectors/workflows/config are INTERNAL/dev
    endpoints left unguarded for dev compatibility (`/api/v1/debug/*` is
    admin-only since 2026-11-13).
-6. Web and Android: a dedicated "sign in to import / download" prompt on 401
-   `login_required` (today the server message is shown as the import error).
+6. Done 2026-11-13 (web `071d6eb`, Android 0.2.9 `31263b3`): a 401 outside
+   `/auth/*` opens the login dialog once (web `api/client.ts`
+   `setLoginRequiredHandler` → `authStore.loginPrompt`; Android
+   `LoginRequiredInterceptor` → `AuthStore.loginPrompt` → `MainActivity`).
 4. Android still uses nginx Basic Auth — needs this flow later.
 5. Recovery keys / password reset via optional email (schema already has
    `recovery_key_hash` column).

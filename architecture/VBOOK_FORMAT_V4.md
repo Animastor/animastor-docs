@@ -1,10 +1,13 @@
 # VBook v4 — «файл на героя» (ADR)
 
-Статус: **решение принято, код backend не начат** (2026-11-12). §12 — задания кодерам по репозиториям с критериями
-приёмки. Карточка героя — [`../05-frontend/HERO_CARD.md`](../05-frontend/HERO_CARD.md).
+Статус: **решение принято, код backend не начат** (2026-11-12; порядок работ и ответы владельца уточнены
+13.11 — §12, §13). §12 — задания кодерам по репозиториям с критериями приёмки. Карточка героя —
+[`../05-frontend/HERO_CARD.md`](../05-frontend/HERO_CARD.md).
 
-База: ветки `feat/behaviour-p0` (поведения, [`VBOOK_BEHAVIOUR.md`](VBOOK_BEHAVIOUR.md)) — в main на 12.11 не влиты.
-Ссылки на код — по этим веткам (`@animastor/vbook-runtime` 0.3.0, `@animastor/editor` 0.3.0).
+База: `main` + `feat/behaviour-p0` (поведения, [`VBOOK_BEHAVIOUR.md`](VBOOK_BEHAVIOUR.md)) + `feat/voice-references`
+(референсные голоса, `architecture/VOICE_REFERENCES.md` — документ живёт в этой ветке, коммит `01ec63e`; в main на
+13.11 ни одна из веток не влита). Порядок влития — §12. Ссылки на код v4 — по веткам поверх `feat/voice-references`
+(`@animastor/vbook-runtime` 0.4.0, `@animastor/editor` 0.4.0).
 
 Схема героя: [`schemas/animastor.character-1.schema.json`](schemas/animastor.character-1.schema.json), примеры —
 [`yura`](schemas/examples/yura.json), [`narrator`](schemas/examples/narrator.json),
@@ -308,16 +311,21 @@ status: "suggested" | "accepted"}`:
 
 ### 5.2 `voice.reference` — согласование с задачей «референсные голоса»
 
-Задача референсных голосов на 12.11 — на этапе разведки (`reports/2026-11-12/voice-references-recon.md`, коммитов
-нет). Она задумана для формата 3.1 («голос в `voices.json`, порт в `vbook-runtime`») — после решения §1.4 текущим
-форматом становится v4. Ниже контракт сведён с её планом; расхождения — в §13, В2.
+**Порт уже существует** (ветка `feat/voice-references`, документ — `architecture/VOICE_REFERENCES.md`, коммит
+`01ec63e`): `@animastor/vbook-runtime/voice` — `getCharacterVoice(book, id) → {timbre, manner, reference}`,
+`setCharacterVoiceReference(book, id, ref | null)`, `resolveReferenceFile(buildDir, ref)`, `referenceState(buildDir,
+ref)`, `listVoiceIds`, `voiceDesignDescription`, `cleanVoiceDescription`. Задача сделана для формата 3.1:
+хранение — `voices.json[id]`, блок референса — во вкладке «Голоса» (`features/voices`).
 
-- **Место** — только `characters/<id>.json` → `voice.reference`. В `voices.json` поле не добавляется.
-- **Один порт** в `vbook-runtime` — имена из плана той задачи: `getCharacterVoice(book, id) → {timbre, manner,
-  reference}` и `setCharacterVoiceReference(book, id, ref | null)`; плюс `resolveReferenceFile(buildDir, ref)` и
-  `referenceState(buildDir, ref)`. Через `getCharacterVoice` читают голос все три нынешних места
-  (`audio/segments.js`, два в `audio/generation.js`). Порт заводит та задача; v4 его не дублирует, `voiceInstruct`
-  (§5.1) — его часть.
+**v4 меняет только место хранения и место блока в UI**: `voices.json` → `characters/<id>.json` (`voice`) и вкладка
+«Голоса» → карточка героя (`HERO_CARD.md` §6). Имена порта, поля, правила файла, проверки и API не меняются.
+Расхождения с планом задачи — §13, В2.
+
+- **Место в v4** — только `characters/<id>.json` → `voice.reference`; в `voices.json` поле не добавляется (в 3.1 оно
+  живёт там, и переезд делает шаг 1 v4).
+- **Один порт** в `vbook-runtime` — уже заведённый; v4 его не дублирует и не переименовывает, а переводит его
+  чтение/запись на файл героя. Через `getCharacterVoice` читают голос все три нынешних места (`audio/segments.js`,
+  два в `audio/generation.js`); `voiceInstruct` (§5.1) — часть этого порта.
 - **Поля**: `file` и `sha256` обязательны; `ref_text`, `source` (`designed` | `uploaded`), `model`, `seed`,
   `verification`, `locked` — необязательны; неизвестные ключи сохраняются.
 - **`file`** — путь относительно `build_<book_id>/`, только вида `voices/<id героя>/<имя>.<wav|flac|mp3|ogg>`.
@@ -334,8 +342,8 @@ status: "suggested" | "accepted"}`:
   `build_<book_id>` целиком — вместе с закреплёнными референсами. Требование формата: `build_<book_id>/voices/` и
   `build_<book_id>/refs/` очисткой кэша не удаляются, только удалением книги. Иначе после каждой очистки все
   герои получают состояние `missing`.
-- **UI** — блок референса в карточке героя (`HERO_CARD.md` §6); отдельный блок во вкладке «Голоса» той задаче
-  делать не нужно — вкладки больше нет.
+- **UI** — блок референса переезжает: в ветке `feat/voice-references` он во вкладке «Голоса» (`features/voices`),
+  в v4 — в карточке героя (`HERO_CARD.md` §6). Отдельного блока во вкладке «Голоса» в v4 нет — вкладки нет.
 
 ### 5.3 `image_refs`
 
@@ -612,14 +620,24 @@ Dirty: внешность — по производному ключу `scene.re
 
 ## 12. План работ
 
-Порядок жёсткий: шаг вливается и проходит тесты до начала следующего. Ветки — от main после влития
-`feat/behaviour-p0`. Тесты — только `./scripts/test-backend.sh`. Шаги 1–6 выкатываются **одним релизом**
-(backend + web + APK): промежуточные состояния main несовместимы с выкаченными фронтами.
+Порядок жёсткий: шаг вливается и проходит тесты до начала следующего. Тесты — только `./scripts/test-backend.sh`.
+Шаги 1–6 выкатываются **одним релизом** (backend + web + APK): промежуточные состояния main несовместимы с
+выкаченными фронтами.
 
-### Шаг 0 — проверка входа импорта (срочно, отдельно от v4, на текущем формате)
+### Подготовка — до шагов 1–6
+
+1. **Шаг 0** — проверка входных данных импорта. Отдельный релиз на текущем формате 3.1, от v4 не зависит (ниже).
+2. **Влить `feat/behaviour-p0`** в main (поведения — [`VBOOK_BEHAVIOUR.md`](VBOOK_BEHAVIOUR.md)).
+3. **Влить `feat/voice-references`** в main (референсные голоса — `architecture/VOICE_REFERENCES.md`): публикация
+   пакетов задачи и живая проверка на GPU — кандидат → закрепление → озвучка сцены клоном с референса. До этой
+   проверки шаги v4 не начинаются: v4 наследует её данные и её порт.
+4. **Перебазировать ветки v4** (`animastor-backend` v4 и `animastor-web` `feat/hero-card`) на
+   `feat/voice-references`; шаги 1–6 идут поверх неё.
+
+### Шаг 0 — проверка входных данных импорта (срочно, отдельно от v4, на текущем формате)
 
 Репозиторий: `animastor-backend` (`packages/animastor-vbook-runtime`, `routes/book/import-routes.cjs`,
-`routes/generation-routes.cjs`). Подробности — у владельца (отчёт 2026-11-12, в документацию не выносится).
+`routes/generation-routes.cjs`).
 
 - `manifest.book_id` из архива проверяется по грамматике id книги до любого обращения к диску; имена записей — по
   белому списку; запись вне каталога книги невозможна.
@@ -627,7 +645,7 @@ Dirty: внешность — по производному ключу `scene.re
   работает как раньше.
 - Публикация: `@animastor/vbook-runtime` 0.3.1 → backend.
 
-### Шаг 1 — `vbook-runtime` 0.4.0: формат
+### Шаг 1 — `vbook-runtime` 0.5.0: формат
 
 - `src/looks.cjs` — `resolveHeroLook` (§4a.5), проверка обликов и ссылок.
 - `src/heroes.cjs` (хелперы §8.1, `CANONICAL_ID_RE`, `RESERVED_HERO_IDS`), `src/character-store.cjs` (чтение
@@ -671,7 +689,7 @@ Dirty: внешность — по производному ключу `scene.re
 ### Шаг 3 — генерация читает героев
 
 backend (`audio/*`, `image/prompt-builder.js`, `workflows/video/video-workflows.js`,
-`services/agent/behaviour-*.js`, `scripts/audit-video-actions.js`), `generation` → **0.2.0**.
+`services/agent/behaviour-*.js`, `scripts/audit-video-actions.js`), `generation` → **0.3.0**.
 
 - Читатели — через хелперы §8.1; внешность — только через `resolveHeroLook`; `resolvePassport` и выбор токенов в
   `buildCharLines` удаляются. Реестр инвалидации — ключи §8.2 и производный `scene.resolved_looks` (§4a.5;
@@ -681,7 +699,7 @@ backend (`audio/*`, `image/prompt-builder.js`, `workflows/video/video-workflows.
   назначение на главу — сцены главы без своей ссылки, правка перекрытого базового поля — ничего, `label` / `notes` —
   ничего, audio не помечается ни в одном случае; `behaviour-p0.test.js` зелёный на v4.
 
-### Шаг 4 — `editor` 0.4.0, `assistant` 0.3.0: API героя
+### Шаг 4 — `editor` 0.5.0, `assistant` 0.3.0: API героя
 
 - Маршруты §8.2 (включая облики и `looks/assign`), удаление старых; `GET`/`PUT /book`; страж путей и промпт ассистента; `assistant-ports.cjs` через
   `characterStore`.
@@ -690,7 +708,9 @@ backend (`audio/*`, `image/prompt-builder.js`, `workflows/video/video-workflows.
 
 ### Шаг 5 — web
 
-Ветка `feat/hero-card` (карточка на контракте §8.2) — см. `HERO_CARD.md` §9: что сделано и что остаётся.
+Ветка `feat/hero-card` (карточка на контракте §8.2), перебазированная на `feat/voice-references` — см.
+`HERO_CARD.md` §9: что сделано и что остаётся. Блок референса голоса карточка получает из web-ветки референсных
+голосов (`features/voices`), а не пишет заново.
 
 ### Шаг 6 — Android
 
@@ -707,14 +727,20 @@ APK ≤ 0.2.9 с новым backend не работает (нет `characters` /
 | № | Пакет | Версия | После шага | Зависит от |
 |---|---|---|---|---|
 | 0 | `@animastor/vbook-runtime` | 0.3.1 | 0 | — |
-| 1 | `@animastor/vbook-runtime` | 0.4.0 | 1 | `@animastor/parser` |
-| 2 | `@animastor/ai-analysis` | 0.2.0 | 2 | `vbook-runtime` ^0.4.0 |
-| 3 | `@animastor/generation` | 0.2.0 | 3 | — |
-| 4 | `@animastor/orchestration` | патч-версия с `generation` ^0.2.0 | 3 | `generation` |
-| 5 | `@animastor/editor` | 0.4.0 | 4 | `vbook-runtime` ^0.4.0 |
-| 6 | `@animastor/assistant` | 0.3.0 | 4 | `vbook-runtime` ^0.4.0 |
-| 7 | `@animastor/player` | патч-версия с `vbook-runtime` ^0.4.0 | 4 | `vbook-runtime` |
-| 8 | `@animastor/web-editor` | 0.2.0 | 5 | — |
+| 1 | `@animastor/vbook-runtime` | 0.5.0 | 1 | `@animastor/parser` |
+| 2 | `@animastor/ai-analysis` | 0.2.0 | 2 | `vbook-runtime` ^0.5.0 |
+| 3 | `@animastor/generation` | 0.3.0 | 3 | — |
+| 4 | `@animastor/orchestration` | патч над 1.4.0 (1.4.1) | 3 | `generation` ^0.3.0 |
+| 5 | `@animastor/editor` | 0.5.0 | 4 | `vbook-runtime` ^0.5.0 |
+| 6 | `@animastor/assistant` | 0.3.0 | 4 | `vbook-runtime` ^0.5.0 |
+| 7 | `@animastor/player` | патч поверх 0.1.3 | 4 | `vbook-runtime` ^0.5.0 |
+| 8 | `@animastor/web-editor` | 0.3.0 | 5 | — |
+
+**Почему версии не 0.4.0 / 0.2.0.** Минорные `vbook-runtime` 0.4.0 и `editor` 0.4.0, а также `generation` 0.2.0 и
+`web-editor` 0.2.0 уже заняты задачей референсных голосов (`feat/voice-references`; её пакеты перечислены в
+`CHANGELOG.md` за 2026-11-12): они публикуются до v4 и остаются в дереве. v4 публикует следующую
+минорную версию поверх них. `ai-analysis` и `assistant` задачей не затронуты — их минорные (0.2.0 и 0.3.0)
+принадлежат v4. `orchestration` (1.4.0 → патч) и `player` (0.1.3 → патч) меняются только зависимостью.
 
 Сейчас у `ai-analysis` и `player` вложенная `vbook-runtime` 0.1.0 — после v4 в дереве backend должна остаться одна
 версия (`npm ls @animastor/vbook-runtime` без вложенных копий). После каждой публикации backend переводится с `file:`
@@ -722,12 +748,17 @@ APK ≤ 0.2.9 с новым backend не работает (нет `characters` /
 
 ---
 
-## 13. Открытые вопросы владельцу
+## 13. Вопросы владельцу и ответы
 
-| № | Вопрос | Предложение |
-|---|---|---|
-| В1 | Синтез, когда закреплённого референса нет или его файл пропал / изменён | принять вариант задачи референсных голосов (её В4): 409 `voice_reference_required` + список `character_id` для диктора и говорящих героев с голосом; `missing` / `mismatch` приравнять к «нет референса». Молча откатываться к VoiceDesign нельзя — другой голос посреди книги |
-| В2 | Задача референсных голосов спланирована под 3.1: поле в `voices.json`, блок во вкладке «Голоса», очистка `instruction` правилами в `timbre` | переставить её после шага 1 и на §5.2: место — файл героя, UI — карточка, `timbre` приходит из анализа (правка `voice_generation.md`, шаг 2), очистка правилами не нужна |
-| В3 | `source.txt` остаётся в `.vbook` | оставить: без него нельзя продолжить анализ импортированной книги |
-| В4 | Две прод-книги 3.1 после релиза не откроются | удалить их штатным удалением книги перед релизом или сразу после |
-| В5 | Старые APK (≤ 0.2.9) после релиза не работают | обязательное обновление через `version.json` в том же релизе |
+Ответы получены 13.11 (все — да, с уточнениями ниже); таблица остаётся как решение, а не как список открытых
+вопросов.
+
+| № | Вопрос | Предложение | Ответ 13.11 |
+|---|---|---|---|
+| В1 | Синтез, когда закреплённого референса нет или его файл пропал / изменён | принять вариант задачи референсных голосов (её В4): 409 `voice_reference_required` + список `character_id` для диктора и говорящих героев с голосом; `missing` / `mismatch` приравнять к «нет референса». Молча откатываться к VoiceDesign нельзя — другой голос посреди книги | **Принято; уже реализовано** в `feat/voice-references` (`VOICE_REFERENCES.md` §6.2). Фолбэка на VoiceDesign нет |
+| В2 | Задача референсных голосов спланирована под 3.1: поле в `voices.json`, блок во вкладке «Голоса», очистка `instruction` правилами в `timbre` | переставить её после шага 1 и на §5.2: место — файл героя, UI — карточка, `timbre` приходит из анализа (правка `voice_generation.md`, шаг 2), очистка правилами не нужна | **Принято с порядком:** референсы идут первыми и живут на хранении 3.1 (`voices.json`), v4 только переносит место хранения (§5.2). `timbre` пишет анализ шагом 2; очистка описания правилами (`cleanVoiceDescription`) живёт до него и после не нужна — `instruction` в v4 нет |
+| В3 | `source.txt` остаётся в `.vbook` | оставить: без него нельзя продолжить анализ импортированной книги | **Принято:** остаётся |
+| В4 | Две прод-книги 3.1 после релиза не откроются | удалить их штатным удалением книги перед релизом или сразу после | **Принято:** сначала бэкап, затем удалить обе книги сразу после релиза; при необходимости — переимпорт из TXT |
+| В5 | Старые APK (≤ 0.2.9) после релиза не работают | обязательное обновление через `version.json` в том же релизе | **Принято:** обновление APK обязательное, в том же релизе |
+| В6 | `manifest.vbook_version` — целое или строка; что пишет писатель | целое `4`; чтение терпит `"4"` и `"4.x"` (§3) | **Ответ 13.11: целое `4`** |
+| В7 | Нужен ли выбор облика в редакторе главы (вкладка «Глава») | селектор облика главы рядом с текстом главы | **Ответ 13.11: не нужен.** Назначение на главы остаётся из карточки («Назначить…», `POST /looks/assign`, §4a.3); вернуться к выбору в редакторе главы при его переделке |

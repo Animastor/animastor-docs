@@ -4,6 +4,27 @@ All notable changes to Animastor are documented here.
 
 ---
 
+## 2026-11-13
+
+### Architecture (уточнение ADR VBook v4; код не начат)
+
+- **Порядок работ v4** (`architecture/VBOOK_FORMAT_V4.md` §12): шаг 0 (проверка входных данных импорта) — отдельным
+  релизом → влитие `feat/behaviour-p0` → влитие `feat/voice-references` с публикацией пакетов и живой проверкой на
+  GPU → шаги 1–6 v4 поверх неё; ветки v4 (`animastor-backend`, `animastor-web` `feat/hero-card`) перебазируются на
+  `feat/voice-references`.
+- **Версии публикации** сдвинуты на минор: `vbook-runtime` 0.5.0, `editor` 0.5.0, `generation` 0.3.0,
+  `web-editor` 0.3.0; `ai-analysis` 0.2.0, `assistant` 0.3.0; `orchestration` (1.4.1) и `player` — патч поверх 1.4.0 /
+  0.1.3. 0.4.0 и 0.2.0 заняты задачей референсных голосов.
+- **§5.2**: порт `@animastor/vbook-runtime/voice` уже существует (ветка `feat/voice-references`); v4 меняет только
+  место хранения `voices.json` → `characters/<id>.json` и переносит блок референсов из вкладки «Голоса» в карточку
+  героя.
+- **§13**: ответы владельца 13.11 (В1–В7) — версия формата целое `4`, `source.txt` остаётся, книги 3.1 удаляются
+  после релиза, APK обновляется обязательно, выбор облика в редакторе главы отложен.
+- **V100 и torch** (`architecture/VOICE_REFERENCES.md` §10, ветка `feat/voice-references`): аудио-нода на sm_70 —
+  torch не выше 2.10 для cu128; PyTorch 2.11 убрал Volta из cu128/cu129, остаётся cu126.
+
+---
+
 ## 2026-11-12
 
 ### Architecture (решение; код backend не начат)

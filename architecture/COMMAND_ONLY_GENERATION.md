@@ -131,6 +131,10 @@ progress-panel показывает строки `blocked`, `interrupted` и `fa
   cancel flag и tombstone (флаг без TTL следующей команде не мешает),
   вытесняет `blocked`/`interrupted`/`failed` задачи тех же типов на тех же
   сценах и создаёт новые.
+- **v2-книга** (`books.orchestration='v2'`, `ORCHESTRATION_V2.md` §12–13): `/regenerate`
+  создаёт команду ядра v2 для `audio` и `image` (этап 2a); `video` работ не создаёт —
+  `summary.skipped_unsupported` и `skipped_worker_types` в ответе, только `video` → **409**
+  `v2_layer_not_supported_yet`; image при `IU_IMAGE_VERSIONED` → **409** `v2_image_unavailable`.
 - `PUT /layer-config` с `X_enabled=false` останавливает стадию X по книге:
   задачи реестра и строки PG → cancelled; lease и копии в очереди хаба
   снимаются; GENERATING без lease → DIRTY; сцены без авторизованной стадии
@@ -485,3 +489,28 @@ Book-wide cancel flag и tombstone не ставятся, другие зада�
   `[WORKER-COUNTS] failed: <message>`, клиенту — нули, как раньше.
 
 Причина замерзания разобрана в `reports/2026-11-05/release-J.md` §6.4–6.6.
+
+## Прогресс Генератора не залипает (2026-11-07, О1)
+
+Разбор: `reports/2026-11-07/orch-v2-image-scene-run.md` О1 — мобильный браузер отдавал из HTTP-кэша
+снимок `progress-panel` трёхминутной давности (`active`, 0/1), хотя команда уже была `done`.
+
+- **Опросные и восстановительные GET никогда не берутся из кэша.** Один список путей на три стороны:
+  `/book/:id/{progress-panel, progress-stream, assets-state, status, agent-status, layer-config, generation*}`,
+  `/scene/:b/:c/:s/status`, `/worker/counts`, `/generate/*`.
+  - backend — `Cache-Control: no-store` (+ `Pragma: no-cache`), без `ETag`/`Last-Modified`, поэтому
+    условный запрос никогда не получает `304` (`backend/src/middleware/no-store.js`);
+  - web — `cache: 'no-store'` по умолчанию в `api/client.ts` (`isNoStorePath`; явный `cache` вызывающего
+    важнее), SSE `progress-stream` тоже `no-store`;
+  - Android — кэша OkHttp нет, интерцептор `NoStoreInterceptor` всё равно ставит `no-store` на те же пути
+    (`network/PollRequests.kt`).
+- **Цикл панели не останавливается из-за одного запроса.** Таймаут 10 с на каждый запрос цикла (панель,
+  счётчики; web `POLL_REQUEST_TIMEOUT_MS`, Android `withTimeout`). Ошибка или таймаут — следующий цикл.
+- **Немедленный перезапрос панели** (пауза 1,5 с прерывается): вкладка снова видима
+  (`visibilitychange → visible`), страница восстановлена из bfcache (`pageshow`), Android `onResume`;
+  SSE `generation_complete` (любой scope) и v2 `progress` с `command_id`. Повод, пришедший во время
+  опроса, не теряется — опрос повторяется сразу. Данные SSE панель не подменяют: панель всегда
+  перечитывается с сервера (опрос остаётся источником правды).
+- Тесты: web `api/client.nostore.test.ts`, `state/panelRefresh.test.ts`,
+  `GeneratePage.workerCounts.test.tsx` (О1); Android `PollRequestsTest`; backend `tests/no-store-headers.test.js`.
+

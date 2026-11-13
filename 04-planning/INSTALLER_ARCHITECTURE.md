@@ -7,7 +7,7 @@
 > `animastor boot` + custom-node deps of the running ComfyUI — §7.5 (installer `0.2.4`, 2026-10-31);
 > tools before ✗, strict CLI, persistent node deps, platform ComfyUI restart — §7.6 (installer `0.2.5`, 2026-11-02);
 > `doctor` does not restart a healthy or busy worker — §7.2, §7.3, §7.9 (installer `0.2.8`, 2026-11-04)
-> **Installer version:** 0.2.8 (`animastor-backend: packages/animastor-installer/package.json`)
+> **Installer version:** 0.2.10 (`animastor-backend: packages/animastor-installer/package.json`)
 >
 > This document describes the **actually implemented** architecture of Animastor
 > Installer based on a full code audit, tests, and git history.
@@ -1174,6 +1174,50 @@ its mtime; D7 log parsing; D8 flags and `current job:`; D9 `animastor start`.
 Release: installer 0.2.8 ships with the next gpu-hub release (repin of
 `artifacts.lock.json` `installer-src` to the merged backend commit).
 
+### 7.10 The worker bundle is deployed whole (installer 0.2.10)
+
+2026-11-07: after an update by installer 0.2.9 worker 2.4.1 died with
+`Cannot find module './worker-logs.cjs'`. `installWorkerBundle()` copied only
+`manifest.worker_bundle.files`; bundle 2.4.1 added `worker-logs.cjs` (required
+by `worker.cjs`), which was in the hub bundle and in the installer package's own
+copy (`<installer>/worker/worker/*`, packed by the hub) but in no manifest.
+
+**Decision (`engine/worker.js`):**
+
+1. The source dir — the installer's bundled copy, else the verified hub bundle
+   — IS the bundle: every regular file is deployed (`listBundleFiles`). Never
+   copied: `.env`, `.env.*` other than `.env.example`, `node_modules/`, `.git/`,
+   `logs/`. A file only the hub bundle has still comes from it.
+2. `manifest.worker_bundle.files` is the minimal presence check: a listed file
+   absent everywhere → `failed` naming it.
+3. The deployed list is returned as `bundle_files` and recorded in install-state
+   (`components.worker.bundle_files`; refresh path: `cli.recordWorkerBundle`).
+   An UPDATE removes the files of the previous version the new bundle no longer
+   ships — only recorded files, never `.env` / `node-classes.json`; a 0.2.9
+   state falls back to its `files_installed`; no record → nothing is removed.
+4. Start guard (`checkWorkerCanStart`, before `node --check` and the spawn):
+   every local `require('./…')` reachable from `worker.cjs` (transitively over
+   local `.cjs`/`.js`) must exist — otherwise **FAILED**
+   `worker bundle incomplete: ./worker-logs.cjs missing in <dir> (required by
+   worker.cjs)`; the worker is not started.
+5. `worker-logs.cjs` is added to the three manifests (revisions bumped) and to
+   `WORKER_CONFIG_FILES` (a newer copy restarts an idle worker, §7.9).
+6. Image profile: `hardware.gpu_min_vram_gb = 14` — an estimate with its
+   derivation in the manifest (GGUF UNet 12.33 GiB + LoRA 1.10 GiB resident,
+   the text encoder offloaded after encoding); 16 GB cards pass, 12 GB cards
+   get `✗ VRAM … below the manifest minimum 14 GB`. Lowered only after a
+   measured run on a smaller card.
+
+Tests: `tests/installer-0210-bundle-files.test.js` — update 2.3.0 → 2.4.1 from
+a hub bundle with a file not in the manifest, idempotent re-run, stale files,
+the installer-package copy, presence check, start guard (direct and
+transitive), `previousBundleFilesOf`, manifests; the real worker checkout passes
+the guard and every file of it is listed.
+
+Release: installer 0.2.10 (`npm publish` — owner) → backend dependency bump →
+repin of `artifacts.lock.json` (`installer-src`, `install-manifests`) in
+gpu-hub → hub release with a new tag.
+
 ### Hub Artifact Serving (`gpu-hub/gpu-hub.js`)
 
 | Endpoint | Purpose | Auth |
@@ -1855,6 +1899,7 @@ When a prerequisite fails, the installer produces a structured remediation:
 | `worker-setup-api.test.js` | Worker setup API routes | Integration |
 | `worker-bundle-env.test.js` | Worker bundle .env handling | Unit tests |
 | `worker-cleanup.test.js` | Worker cleanup logic | Unit tests |
+| `workflow-model-names-manifest.test.js` | Workflow `*_name` model files exist in their manifest (backend) | Real manifests, no network |
 
 ### Test as Architecture Contracts
 
@@ -1869,6 +1914,9 @@ Tests serve as **executable architecture contracts** — they verify:
 8. Bootstrap rejects credential env vars (`gpu-hub-bootstrap.test.js`)
 9. Setup contract never exposes raw manifests (`installer-setup-contract.test.js`)
 10. Model downloads are idempotent (`installer-engine.test.js` tests 15-16)
+11. Workflow model names are installed by their manifest — every model-file `*_name` in a manifested
+    workflow is a `filename` dependency of that manifest (`backend/tests/workflow-model-names-manifest.test.js`,
+    stage166 A; manifest-less legacy `old_*` workflows are an explicit list in the test)
 
 ### Mock Architecture
 

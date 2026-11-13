@@ -4,14 +4,209 @@ All notable changes to Animastor are documented here.
 
 ---
 
+## 2026-11-13
+
+### Changed (backend + vbook-runtime; не выкачено)
+
+- **Усилена проверка входных данных импорта.** `@animastor/vbook-runtime` **0.2.1** (прод-линия), 0.3.1
+  (`feat/behaviour-p0`), в составе 0.4.0 (`feat/voice-references`); backend — общая проверка идентификаторов в запросах,
+  лимиты загрузки. `.vbook` принимается в составе формата 3.1. Профиль — `architecture/AUTH_IMPLEMENTATION.md` §2–3, §5.
+- **Изменение поведения:** импорт (`/book/import`, `import-txt`, `import-text`, `load-vbook`, `/generate`) и выгрузка
+  книги (`download`, `storyboard`, `audio`, `export`) — только для вошедшего пользователя (гость и аноним — 401
+  `login_required`); запросы без идентичности к данным книг — 401, список книг — пустой; `/api/v1/debug/*` — только
+  администратор.
+- **Web + Android (паритет):** любой 401 вне `/auth/*` один раз открывает окно входа; ошибка импорта —
+  «Импорт и скачивание книг доступны после входа в аккаунт». Web `071d6eb`, Android 0.2.9 (11) `31263b3`.
+- Удаление книги и очистка кэша затрагивают только файлы этой книги в каталоге результатов.
+- Тесты backend больше не обращаются к внешним сервисам.
+
+## 2026-11-10
+
+### Feature (поведения героев, фаза 0; ветка `feat/behaviour-p0` влита в main 13.11, не выкачено)
+
+- **Поведения героев — детерминированное применение к видео** (`architecture/VBOOK_BEHAVIOUR.md`; основа — разведка
+  `architecture/VBOOK_BEHAVIOUR_RECON.md`, вариант C, влита в main 10.11).
+  - **`behavior.json` v2**: `{schema_version: 2, rules, characters}` на диске и в памяти; файл v2.1 мигрирует при загрузке
+    (все ключи → `characters`), сохраняется всегда v2; экспорт `.vbook` — формат диска, импорт старых — миграция.
+    **API без изменений для клиентов**: `GET /book` отдаёт `behaviors` плоской картой героев + `behavior_rules` (только
+    чтение) — решение владельца 10.11, иначе Android ≤ 0.2.8 не разберёт книгу. `PUT /book` раскладывает плоскую карту в
+    `characters` и не теряет `rules`; без `behaviors` хранимый документ не меняется (раньше сбрасывался в `{}`).
+    Редактор (POST/PATCH/DELETE, каскад удаления героя) и ассистент (`edit_book`, страж путей v2.1) — `characters.<id>`.
+  - **Правила** `{id, scope, character_id?, when:{emotion, unit_type?}, then:{action}, strength, probability, cooldown_iu,
+    priority, enabled?}`; дефолты `backend/ai/examples/behaviour-rules.json` — 7 глобальных правил-жестов (EN, без
+    внешности/одежды; `probability 0.25`, `cooldown_iu 4`, `strength 0.6`); 9 правил примера `behavior.json` — образец
+    `behaviour-rules.example.json`, не загружается (ни матчером, ни промптом импорта); эффективные = дефолты ⊕ правила
+    книги по `id` (поверхностное слияние, `enabled:false` выключает). Удаление героя (редактор и `edit_book`) удаляет и
+    его правила `scope:"character"`.
+  - **`unit.state`** — эмоция героя в IU из словаря 15 EN-слов; возвращается шагом `visuals` в том же вызове LLM,
+    валидируется хостом.
+  - **Матчер** — чистая функция: `seed = sha256(book:rule:unit)`, порог `probability`, `strength 0` = выкл., cooldown по
+    (правило, герой) внутри сцены, одно поведение на героя в IU (priority, затем id), пропуск `behaviour_locked`/заполненных IU,
+    снимок `action`; **лимит на сцену** `max_per_scene` (дефолт 2, книга переопределяет `defaults.max_per_scene`, `0` —
+    выкл.; считается по IU, внутри IU — priority, id; заполненные и заблокированные IU входят в счёт). Вызов — один хук после всех LLM-шагов окна в **обоих** путях раннера; только IU окна; без правил — no-op.
+  - **Видео**: фразы `<character_id> <action>` дописываются к строке сториборда; `video.action`, картинки не меняются.
+  - **Инвалидация**: `unit.behaviour` → только video; `unit.state`, `unit.behaviour_locked` → ни один слой; правка правил
+    dirty не ставит.
+  - Web и Android фильтруют служебные ключи (паритет — `ANDROID_WEB_PARITY.md`, «Открытые GAP» 2026-11-10); Android
+    0.2.9 (versionCode 11), `BookData.behaviors` — сырой `JsonElement`.
+  - Пакеты: `@animastor/vbook-runtime` 0.3.0, `@animastor/editor` 0.3.0, `@animastor/assistant` 0.2.0,
+    `@animastor/generation` 0.1.2 — опубликованы владельцем 12.11 (tarball'ы из npm совпадают с `packages/*` ветки);
+    backend берёт их из реестра (`^0.3.0`/`^0.3.0`/`^0.2.0`/`^0.1.2`), `backend/.npmrc` удалён.
+  - Документы: `architecture/VBOOK_BEHAVIOUR.md` (новый), `07-agents-and-generators/BEHAVIOR_JSON_LIFECYCLE.md`
+    (переписан), `architecture/PHASE_2_CONTRACTS.md` (строка `behavior.json`). Отчёты: `reports/2026-11-10/behaviour-p0.md`, `reports/2026-11-10/behaviour-p0-fix.md`, `reports/2026-11-10/behaviour-p0-limit.md`.
+
+---
+
+## 2026-11-09
+
+### Feature (orch v2, этап 3a — видео; не влито, не выкачено)
+
+- **Видео на оркестрации v2** (`video_group` + `video_merge`) для книг `books.orchestration='v2'`. Решения владельца — ADR
+  `architecture/ORCHESTRATION_V2.md` §13 п.11; поведение — §6.3, §6.5, §8.1; ход — §12 «3a». Слой `vbook` (задача H) не входит.
+  - **Видео только при реальном аудио сцены** (`scene_assets(audio)` `ready`, не заглушка); аудио в работе → ожидание
+    `audio_merge`; иначе `skipped_needs_audio`. Картинки: грязный IU → `skipped_image_dirty`, нет v2-картинки (в т.ч. legacy
+    без `gen_parts`) → `skipped_needs_image`; IU в работе → присоединение. Причины — в `summary` команды и в прогрессе
+    (`progress-panel`, строка video, поле `skipped`). Недостающее аудио и картинки команда сама не ставит.
+  - **Длительности — только реальные** `end_ms − start_ms`, одна функция для плана групп (DP, `totalFrames`, `frame_idx`,
+    таймкоды промпта), хэшей и склейки; IU с нулевой длительностью в видео не входит. `part_hash` группы = кадры + снимок
+    workflow + длительности; хэш склейки = хэши групп + длительности. Новое аудио → видео устарело, перегенерация только
+    командой (`missing`); всё готово, кроме склейки → только локальная склейка.
+  - **v2 `audio_merge` пересчитывает тайминги IU** (формулы legacy IU-RECALC) в транзакции приёма; `iu-repo` хранит
+    `estimated_duration_sec = 0` как 0 (раньше `0 || null` оставлял старую оценку — причина расхождений на BA).
+  - **Кадры по ссылке** `GET /internal/gen/jobs/:id/input/:name` с токеном задачи (без base64); nginx уже пропускает
+    (`animastor-deploy` 1b `81dff42`). Воркер **2.5.0** скачивает их в `COMFY_INPUT_DIR`, сверяет sha256, удаляет после работы.
+  - Файлы: группы `{prefix}_gN.mp4` (их читают таймлайн плеера, экспорт, cleanup — имена не менялись), итог `{prefix}.mp4`
+    (плеер, экспорт). Склейка звук не накладывает (звук — только экспорт → `muxVideoAudio`; «странность» разведки §10 снята).
+  - Legacy-видео не трогает v2-книгу (поздний `scene_video` отклоняется до записи, `completeGroup` — `orchestration_v2`).
+  - Пакеты: `@animastor/orchestration` **1.3.0** (не опубликован), воркер 2.5.0 (бандл), gpu-hub — перепин lock без релиза.
+  - Разведка `architecture/ORCHESTRATION_V2_RECON_VIDEO.md`: §9 п.5 (nginx-лимит есть), §10 (видео без звука — не баг).
+  - Отчёты: `reports/2026-11-09/orch-v2-stage3-video.md`, `reports/2026-11-09/orch-v2-stage3-video-durations.md`.
+
+---
+
+## 2026-11-07
+
+### Fix (stage167 — по итогам разбора `reports/2026-11-07/orch-v2-image-scene-run.md`)
+
+- **О1. Прогресс Генератора не залипает из-за HTTP-кэша (web + backend + Android).** 07.11 обычное окно
+  Opera отдавало `progress-panel`, снятый в 12:57:00 (`active`, 0/1), хотя команда завершилась в 12:59:55;
+  ответы несли только слабый `ETag`, без `Cache-Control`.
+  - **backend:** один middleware `src/middleware/no-store.js` на `/api/v1` до маршрутов — GET/HEAD опросных
+    путей (`/book/:id/{progress-panel,progress-stream,assets-state,status,agent-status,layer-config,generation*}`,
+    `/scene/:b/:c/:s/status`, `/worker/counts`, `/generate/*`) отдают `Cache-Control: no-store` +
+    `Pragma: no-cache`, `ETag`/`Last-Modified` подавлены, поэтому `304` на них не бывает. Тест
+    `tests/no-store-headers.test.js`.
+  - **web:** `api/client.ts` — `cache: 'no-store'` по умолчанию для тех же путей (`isNoStorePath`, один
+    список на три стороны), SSE `progress-stream` тоже `no-store`; цикл панели: таймаут 10 с на каждый запрос
+    (`POLL_REQUEST_TIMEOUT_MS`), пауза 1,5 с прерывается — `visibilitychange → visible`, `pageshow` (bfcache)
+    и SSE `generation_complete` / v2 `progress` с `command_id` перезапрашивают панель сразу
+    (`state/panelRefresh.ts`); запрос, пришедший во время опроса, не теряется.
+  - **Android 0.2.8 (10):** у OkHttp кэша нет (закреплено тестом); `NoStoreInterceptor` ставит `no-store` на
+    те же пути (`PollRequests.kt`, те же фикстуры); `withTimeout(10 с)` на панель и счётчики (read timeout
+    клиента — 15 мин); пауза прерывается по SSE и `onResume`.
+  - Профильный документ: `architecture/COMMAND_ONLY_GENERATION.md` §«Прогресс Генератора не залипает»;
+    паритет — `architecture/ANDROID_WEB_PARITY.md` (PARITY).
+- **О2. Legacy read-repair placeholder-аудио не трогает v2-книгу (I2).** `recoverMissingPlaceholders()` шёл на
+  каждом `GET /book` и `POST recover-placeholders` без проверки v2 и мог создать placeholder-mp3 +
+  `scene_assets(audio)` в обход приёма. Гейт — внутри функции, через общий предикат изоляции legacy
+  (`PersistencePort orchestration.isV2Book`, fail-closed — тот же у scheduler, reconcile, scene window).
+  `@animastor/editor` не менялся. ADR `architecture/ORCHESTRATION_V2.md` §3 I2. Тест
+  `tests/orch-v2-placeholder-readrepair-gate.test.js`.
+- **О3. Наблюдаемость v2.** `@animastor/orchestration` **1.2.0** (minor): строки
+  `[gen-v2] command-created | claim | accept | error | requeue | command-finished` через порт логгера, поля из
+  белого списка (без токенов, путей, параметров); ядро `src/gen` не вызывает `console` само;
+  `scene_assets.width/height` у картинок из PNG-валидатора; принятые файлы `0644`. backend: ошибка
+  NOTIFY→SSE — `console.warn` вместо пустого `.catch`. gpu-hub **v0.3.3**: access-лог (метод, путь без query,
+  код, `worker_id`, мс), пустые опросы задач, 2xx beacon и `/health` — сводкой раз в минуту. ADR §7, §8.4, §9.
+- **Установщик 0.2.10: бандл воркера копируется целиком.** Воркер 2.4.1 падал с
+  `Cannot find module './worker-logs.cjs'`: 0.2.9 копировал только `manifest.worker_bundle.files`, а
+  `worker-logs.cjs` (есть в бандле хаба и в копии внутри пакета установщика) не было ни в одном манифесте.
+  Теперь копируется всё содержимое источника (список манифеста — минимальная проверка наличия; `.env`,
+  `.env.*` кроме `.env.example`, `node_modules/`, `.git/`, `logs/` — никогда); список файлов бандла —
+  в install-state `components.worker.bundle_files`, при обновлении удаляются файлы старой версии, которых
+  нет в новой (только записанные установщиком, никогда `.env` / `node-classes.json`); перед стартом все
+  локальные `require('./…')` из `worker.cjs` должны быть на диске, иначе FAILED с именем файла.
+  `worker-logs.cjs` добавлен в три манифеста и `WORKER_CONFIG_FILES`. Профиль image:
+  `gpu_min_vram_gb = 14` (оценка с выводом в `hardware.derivation`; карты 16 GB проходят, 12 GB — нет).
+  Профильный документ: `04-planning/INSTALLER_ARCHITECTURE.md` §7.10.
+
+- **Имена моделей в workflow приведены к манифестам (stage166 A, решение владельца).** Источник правды —
+  файлы на HF в `packages/animastor-installer/ai/install-manifests`: `img-qwen-image.json` узел 1010
+  `LoraLoaderModelOnly.lora_name` → `Wuli-Qwen-Image-2512-Turbo-LoRA-4steps-V3.0-bf16.safetensors`;
+  `video-ltx-{1,2,3,4}p.json` узел 141 `UnetLoaderGGUF.unet_name` → `LTX-2.3-22B-distilled-1.1-Q4_K_M.gguf`
+  (проверено по HF API tree: файл есть, size `17763015328` и sha256
+  `cfebeb7a…1f75fbd` совпадают с манифестом `video/ltx-2.3.json`). Манифесты не менялись.
+  **Гарантия-тест** `backend/tests/workflow-model-names-manifest.test.js`: для каждого workflow с профилем
+  в манифесте (`provenance.workflows`) все `*_name` со значением-файлом модели
+  (`.safetensors|gguf|pt|pth|ckpt|bin`) обязаны быть среди `filename` зависимостей манифеста; workflow без
+  манифеста (`old_*`) — явный список в тесте (новый без профиля валит тест), известные исключения —
+  отдельный `KNOWN_EXCEPTIONS` с TODO и ссылкой на отчёт, не skip всего теста.
+  Оба пути картинок (legacy и v2-порт) берут workflow из одной функции `buildIUWorkflow` — отдельной правки
+  не нужно.
+  - **Манифесты: только производные поля** (решение владельца 07.11): `baseline_sha256` пересчитан под новые
+    файлы у 5 артефактов (`img-qwen-image`, `video-ltx-1p…4p`), `revision` образ и видео → `2026.11.07-r1`;
+    данные о моделях/HF не менялись. Захардкоженные хеши в тестах установщика
+    (`installer-phase15`, `installer-resolver`) обновлены тем же пересчётом.
+  - **`@animastor/installer` 0.2.8 → 0.2.9** (patch bump `package.json` + lock; `npm publish` — владелец).
+    Зависимость backend `^0.2.4` → `^0.2.9` поднимается **только после publish**; до этого прогоны идут на
+    локальном пакете (`backend/node_modules/@animastor/installer` синхронизирован с `packages/`).
+  - Отчёт: `reports/2026-11-07/stage166-branches.md`.
+
+- **Логи воркера — всегда хозяину (WLOG-2).** Решение владельца 07.11: логи пишутся у всех воркеров,
+  а не только у платформенных. Читает хозяин (владелец workspace воркера) и админ платформы;
+  пользователи, которым воркер расшарен (`users`-гранты и `public`), логов не видят — `404`, аноним `401`.
+  `workers.log_shipping` (backend `feat/worker-logs-owner`, не влито, не выкачено) остаётся выключателем
+  на будущее: миграция WLOG-2 переводит default в `TRUE` и поднимает `TRUE` неотозванным строкам один раз,
+  число строк пишется в лог; `false` от оператора переживает рестарт. ADR: `architecture/ORCHESTRATION_V2.md` §8.5,
+  открытый вопрос про критерий «платформенный воркер» закрыт.
+
+### Feat
+
+- **Оркестрация v2, этап 2a: изображения (IU) на ядре v2** для `books.orchestration='v2'`
+  (backend `orch-v2/2a-image`; не влито, не выкачено, `@animastor/orchestration` 1.1.0 не опубликован).
+  - **Ядро 1.1.0:** проверка PNG при приёме (структура + CRC, размеры > 0, поток пикселей, пустой /
+    однотонный кадр → `invalid_result`: один повтор, затем failed; порог `ORCH_V2_MIN_LUMA_STDDEV`,
+    по умолчанию 2.0); пропуск готового по IU (`part_hash` = sha256 снимка workflow); сцена `image`
+    `ready`, когда приняты все IU сцены; legacy `scene-window` (окно, read-repair chunk-статусов,
+    `generate-next`) не трогает v2-книгу.
+  - **backend:** порты image (`planUnits` / `buildPayload` — тот же workflow, что у legacy, байт-в-байт /
+    `artifactPath` — канонический `…_{unit}.png` / инвалидация превью); `/regenerate` v2-книги принимает
+    `image`, `video` → `summary.skipped_unsupported`; `IU_IMAGE_VERSIONED` → 409 `v2_image_unavailable`.
+  - **Фронты** не менялись: кадры v2-книги отдают прежние эндпоинты чтения (паритет не затронут).
+    `assets-state` (image-счётчики) и `/chunk/:id/image` для v2-книги не обновляются — фронты по ним
+    картинки не показывают; правка — с API §11.
+  - **Хаб и воркер** не менялись (v3-путь типонезависим; сквозной прогон с воркером 2.4.0).
+  - ADR `architecture/ORCHESTRATION_V2.md` §4.3, §6.3, §7, §12 «2a», §13 п.9; разведка
+    `architecture/ORCHESTRATION_V2_RECON_IMAGE.md` (ветка `recon/image-path` влита);
+    `architecture/COMMAND_ONLY_GENERATION.md` (ответ `/regenerate` для v2-книги).
+  - ADR §6.5 / §13 п.10 — видео ждёт картинки (решение для этапа 3).
+  - Отчёт: `reports/2026-11-07/orch-v2-2a-image.md`.
+
+---
+
 ## 2026-11-06
 
-### Fixed
+### Fixed (web-auth sticky; влито в main 13.11, не выкачено)
 
-- **«Залипание» аккаунта между `app.` и `admin.` (web-auth sticky).** Ветки `fix/auth-sticky` в `animastor-backend` и `animastor-web`; в `main` не влито, не выкачено. Причина — старые host-only cookie `animastor_sid`/`animastor_gid` (до `COOKIE_DOMAIN`), которые `Set-Cookie` с `Domain=` не удаляет; чтение только первой cookie из заголовка; кэширование `/auth/me` и `/api/v1/books` браузером.
+- **«Залипание» аккаунта между `app.` и `admin.` (web-auth sticky).** Ветки `fix/auth-sticky` в `animastor-backend`, `animastor-web` и `animastor-docs` влиты в main 13.11 merge-коммитами (без force-push), не выкачено. Причина — старые host-only cookie `animastor_sid`/`animastor_gid` (до `COOKIE_DOMAIN`), которые `Set-Cookie` с `Domain=` не удаляет; чтение только первой cookie из заголовка; кэширование `/auth/me` и `/api/v1/books` браузером.
   - **backend:** login/logout дополнительно шлют host-only очистку `animastor_sid`/`animastor_gid` (`Max-Age=0`, без `Domain=`, только при заданном `COOKIE_DOMAIN`); `authContext` перебирает все дубли cookie и берёт первую живую (неревокированную) сессию, один warning `duplicate session cookies` на запрос; `Cache-Control: no-store` на `/api/v1/auth/*` и `/api/v1/books`.
-  - **`@animastor/auth`:** `parseCookieHeaders` и `clearHostOnlyCookieHeaders` в cookie-грамматике. Пакет нужно опубликовать (и backend перевести на новую версию) до сборки образа — backend вызывает новые методы.
+  - **`@animastor/auth`:** `parseCookieHeaders` и `clearHostOnlyCookieHeaders` в cookie-грамматике, версия 0.1.1. Пакет публикуется до сборки образа — backend вызывает новые методы.
   - **web:** `fetchMe()` читает `/auth/me` с `cache: 'no-store'`; `logout()` ждёт `fetchMe()` вместо только локального сброса. Admin использует тот же store — отдельных правок не требует.
+
+### Fix
+
+- **`cleanBookRedisKeys` покрывает legacy-семейства ключей книги** (backend, ветка
+  `fix/clean-book-redis-keys`). После `DELETE /api/v1/book/<id>` у книги, генерировавшейся через legacy,
+  оставались 35 Redis-ключей (`reports/2026-11-06/orch-v2-1d-release.md` §18): `assets` и
+  `artifact-manifest` (без TTL — навсегда), `fence-journal`, `fence-publish`, `fence-unrecoverable`,
+  `intent`, `dispatch-intent`, `idempotency:stage-epoch`, `job`, `result-processed`,
+  `dispatch-completed`, `cancelled-workers`. Добавлен шаблон на каждое семейство, все — только по id
+  этой книги (форматы взяты у писателей, id экранирован; хабовый `job:{dispatch_id}:{job_id}` —
+  исправлен прежний недостижимый шаблон `job:{book}_*`). `idempotency:ref` удаляется парно
+  (ref + claim + маркер завершения) через `releaseClaimsForBook` — только при удалении книги;
+  cache-clear освобождает claims после очистки очереди хаба (Stage 116/118), как и раньше.
+  `cancelled-workers:{book}` теперь тоже в чистке, поэтому `book-deletion` взводит сигнал заново (TTL 1 ч).
+  Документация: `architecture/PHASE_2_CONTRACTS.md` §9.2 п.4, `architecture/PHASE_4_BOOK_MODEL.md` §7.
 
 ### Release
 
@@ -26,6 +221,12 @@ All notable changes to Animastor are documented here.
 
 ### Feat
 
+- **Свежие логи воркера на VPS (ORCHESTRATION_V2 §8.5)** — ветки `feat/worker-logs` в `animastor-worker`, `animastor-gpu-hub`, `animastor-backend`, `animastor-docs`; не влито, не выкачено, релиза GHCR/npm нет.
+  - **Воркер 2.4.1.** Кольцевой буфер последних 2000 строк / 256 КиБ всего, что пишет логгер (плюс stderr ComfyUI, если его запускает сам воркер). Каждые 30 с — только новые строки: `POST hub /v3/logs` с Bearer, gzip-JSON `{worker_id, seq_from, seq_to, lines[]}`, ≤ 64 КиБ после сжатия; нет новых строк → нет POST; ошибка/таймаут 5 с → молча, строки остаются; отправка не блокирует цикл задач. Редакция **до** отправки: `Authorization`/`Bearer`, `upload_token`, `key|token|secret/password=` + `[A-Za-z0-9_-]{32,}`, значения `.env`, зарегистрированные секреты. `WORKER_LOG_SHIP=on|off` (по умолчанию `on`); `send_log_tail:true` в ответе beacon → одноразовый сброс всего буфера.
+  - **Хаб.** Маршрут **17** `POST /v3/logs`: тот же Bearer-гейт, сырое тело с потолком 128 КиБ (`413`), gunzip с потолком распаковки 1 МиБ (`413`), пересылка в backend `/internal/workers/:worker_id/logs` (`x-api-key`, docker-сеть), записи в Redis и своей копии логов нет; `worker_id` — из токена, не из тела.
+  - **Backend.** Ingest `POST /internal/workers/:id/logs` (x-api-key; UUID до ФС, `400`/`404`/`413`, `log_shipping=false` → 204 без записи) → `{WORKER_LOGS_DIR}/<id>/current.log` строками `ts level msg`, права 0700/0600, ротация > 5 МБ в `current.log.1` (старый `.1` удаляется). Opt-in-колонка `workers.log_shipping BOOLEAN NOT NULL DEFAULT FALSE` + миграция **WLOG-1** (true для `mode='system'` и workspace с владельцем `role='admin'`). Одноразовый in-memory флаг: `POST /api/v1/workers/:id/request-log` → `send_log_tail` ровно в одном ответе `/internal/gen/beacon`. Чтение: `GET /api/v1/workers/:id/log?lines=N` (N ≤ 2000, по умолчанию 200), владелец workspace / админ.
+  - **Тесты:** воркер 98 (`tests/run-all.cjs`), хаб 40 (`npm test`, freeze-тест пинит 17 маршрутов), backend — `tests/worker-logs.test.js` 19 и полный прогон `scripts/test-backend.sh`: **3798 passing, 28 pending, 0 failing**.
+  - **Документация:** `architecture/ORCHESTRATION_V2.md` §8.5 (новая), `architecture/GPU_HUB_CONTRACT.md` §3 (маршрут 17), §12 (`V3_LOG_*` overrides), §16 (строка `/v3/logs`, guard `tests/v3-logs.cjs`).
 - **Скрипт снимка исходников `scripts/source-snapshot.sh` (репозиторий `animastor-deploy`).**
   Создаёт `/home/animastor/backups/sources/animastor-sources-<UTC>.tar.zst` из деревьев
   файлов ветки `main` всех bare-репозиториев `/home/animastor/repos/*.git` (`git archive
@@ -5187,3 +5388,4 @@ document (rules, decisions, chat-stream divergences).
 - **Remove shouldGenerateIUImage dead code**: Removed unused function that was already dead.
 - **PATCH snapshot-based diff**: Updated diff algorithm to work with PATCH endpoint.
 - **Update docs**: CHANGELOG.md, PROJECT_STRUCTURE.md.
+# 2026-11-07 — Добавлена разведка слоя видео для оркестрации v2: `architecture/ORCHESTRATION_V2_RECON_VIDEO.md`.

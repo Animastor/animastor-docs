@@ -95,10 +95,11 @@ base64 asset transport (recorded debt, Phase 10 audit §7).
 
 ## 3. HTTP route surface (exact set)
 
-`[NORMATIVE — FROZEN]` The route set is EXACTLY the 16 routes below (14 of
-protocol 2 + 2 protocol-3 relay routes added in ORCHESTRATION_V2 stage 1c).
+`[NORMATIVE — FROZEN]` The route set is EXACTLY the 17 routes below (14 of
+protocol 2 + 3 protocol-3 routes added in ORCHESTRATION_V2 stage 1c and the
+§8.5 fresh-log ingest).
 Removal or addition requires a deliberate guard update (the hub package
-`tests/run-all.cjs` §5 pins the 16-route set; the backend-side
+`tests/run-all.cjs` §5 pins the 17-route set; the backend-side
 phase10a-gpu-hub-contract-freeze.test.js pins the set of the npm
 `@animastor/gpu-hub` it installs and moves with the next hub publish).
 
@@ -120,6 +121,7 @@ phase10a-gpu-hub-contract-freeze.test.js pins the set of the npm
 | 14 | DELETE | `/queue/clear` | Backend (x-api-key) | dispatch-engine, book routes | :1816 — scoped only since stage 1c (§8.5) |
 | 15 | GET | `/v3/task/next` | Worker (Bearer) → backend relay | worker ≥ 2.4.0 | §16 |
 | 16 | POST | `/v3/beacon` | Worker (Bearer) → backend relay | worker ≥ 2.4.0 | §16 |
+| 17 | POST | `/v3/logs` | Worker (Bearer) → backend relay | worker ≥ 2.4.1 | §16 — fresh log ingest (ORCHESTRATION_V2 §8.5) |
 
 `[NORMATIVE — FROZEN]` `/worker-source` (deprecated) MUST remain until a
 coordinated deprecation: the installer engine still uses it as a fallback
@@ -631,6 +633,8 @@ frozen):
 not env): `WORKER_SOURCE_PATH`, `WORKER_BUNDLE_DIR`, `WORKFLOW_DIR`,
 `INSTALLER_SRC_DIR`, `INSTALLER_MANIFESTS_DIR`, `INSTALLER_WORKFLOWS_DIR`,
 `PUBLIC_HUB_URL`, `WORKER_BUNDLE_VERSION`, `INSTALLER_VERSION`,
+`V3_LOG_BODY_LIMIT` (default 131072, `/v3/logs` wire ceiling),
+`V3_LOG_INFLATED_LIMIT` (default 1048576, gunzip ceiling),
 `fetchImpl`, `intervals`.
 
 `[NORMATIVE — FROZEN]` Read-only volume mount targets (artifact inputs):
@@ -775,11 +779,12 @@ queue, running record, dedup, result copy or retries of its own.
 |---|---|---|---|
 | `GET /v3/task/next?type=…` | Bearer worker credential (mirror); `type` ≠ credential type → `409 worker_type_mismatch` | `POST {BACKEND_INTERNAL_URL}/internal/gen/claim {worker_id, worker_type}`, `x-api-key` | backend status + body as is (`{task}` / `{task:null}`) |
 | `POST /v3/beacon` | Bearer worker credential; refreshes the hub's own `animastor:worker:heartbeat:{type}:{id}` (EX 30, `/beacon` shape + `protocol_version: 3`, `current_job_id`) | `POST /internal/gen/beacon {worker_id, current_job_id}`, `x-api-key` | backend status + body as is (`{cancel:[…]}`) |
+| `POST /v3/logs` | Bearer worker credential; reads the **raw** body (the route is excluded from the global `express.json`), wire ceiling 128 KiB (`413 payload_too_large`), gunzip/inflate with a 1 MiB output ceiling (`413` beyond it), `lines[]` required (`400`) | `POST /internal/workers/:worker_id/logs`, `x-api-key`, parsed body as is; `worker_id` **from the token**, the body's `worker_id` is a label | backend status + body as is (`204` on write / opt-out, `400`/`404`/`413`) |
 
 - Identity (`worker_id`, `worker_type`) only from the token; body ids are ignored. Type, mode, workspace and share policy are resolved by the backend from PG.
 - One relay attempt, timeout 10 s (`V3_RELAY_TIMEOUT_MS` config override for tests). Network error / timeout → `503 backend_unavailable`; backend `401` (hub key rejected) → `502 backend_rejected_hub_key`; `BACKEND_INTERNAL_URL` unset → `503 v3_not_configured`; `GPU_HUB_API_KEY` unset → `503 hub_api_key_not_configured`.
-- Redis writes on the v3 path: only the heartbeat key above (UI status + legacy worker counts). `/v3/task/next` writes nothing. The v2 registry `animastor:gpu-hub:workers` is not touched (the v2 pop checks its `protocol_version`).
+- Redis writes on the v3 path: only the heartbeat key above (UI status + legacy worker counts). `/v3/task/next` and `/v3/logs` write nothing — the hub keeps no copy of log payloads (ORCHESTRATION_V2 §8.5). The v2 registry `animastor:gpu-hub:workers` is not touched (the v2 pop checks its `protocol_version`).
 - Results and errors do NOT pass the hub: the worker sends `PUT upload_url` / `POST error_url` straight to the backend (public `https://animastor.org/internal/gen/jobs/…`, nginx).
-- Worker ≥ 2.4.0 (`WORKER_PROTOCOL=both`, default) asks `/v3/task/next` first and makes one v2 `/task/next` pop when v3 has nothing / answers 404 / 503; `WORKER_PROTOCOL=v2only` never calls `/v3`.
-- Guard: hub package `tests/v3-relay.cjs` (relay bodies, 503 cases, single attempt, zero Redis writes on next, one heartbeat write on beacon, `/queue/clear` without scope → 400).
+- Worker ≥ 2.4.0 (`WORKER_PROTOCOL=both`, default) asks `/v3/task/next` first and makes one v2 `/task/next` pop when v3 has nothing / answers 404 / 503; `WORKER_PROTOCOL=v2only` never calls `/v3`. Worker ≥ 2.4.1 additionally ships its ring-buffer tail to `/v3/logs` every 30 s when `WORKER_LOG_SHIP` is not `off`.
+- Guard: hub package `tests/v3-relay.cjs` (relay bodies, 503 cases, single attempt, zero Redis writes on next, one heartbeat write on beacon, `/queue/clear` without scope → 400) and `tests/v3-logs.cjs` (raw-body ceiling → 413, gunzip ceiling → 413, `lines[]` → 400, identity from the token, backend relay body/status, no Redis write).
 

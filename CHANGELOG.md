@@ -31,6 +31,10 @@ All notable changes to Animastor are documented here.
     `@animastor/installer` 0.2.11, `@animastor/web-editor` 0.2.0.
   - Отчёты: `reports/2026-11-12/voice-references-recon.md`, `reports/2026-11-12/voice-references.md`.
 
+Уточнение 13.11 (в том же документе, §10): аудио-нода на V100 (sm_70) — **torch не выше 2.10 для сборок cu128**, так как
+PyTorch 2.11 убрал Volta из cu128/cu129 (V100 остаётся только на cu126). Симптом нарушения —
+`no kernel image is available for execution on the device`.
+
 ---
 
 ## 2026-11-09

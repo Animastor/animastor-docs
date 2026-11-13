@@ -236,6 +236,13 @@ JSON (UTF-8, в `LIST/INFO/ICMT` после `data`): `schema`, `node_version`, `
   установщик 0.2.11 пишет `.animastor-source.json`, проба читает его.
 - `faster-whisper==1.2.1`, `ctranslate2==4.6.0` (ветка CUDA 12 / cuDNN 9, как torch cu128 образа).
   Путь CUDA на V100 (sm_70) — проверяется вживую; иначе CPU int8 (`small` на 15 с — приемлемо).
+- **V100 (sm_70): torch не выше 2.10 для сборок CUDA 12.8.** Начиная с PyTorch 2.11 бинарники cu128/cu129 больше не
+  содержат Volta (compute capability 7.0) — ради cuDNN 9.15.1; V100 остаётся только на cu126. Значит в образе
+  `audio/qwen-tts` либо `torch<=2.10` + cu128, либо cu126-сборка (она публикуется до 2.14 включительно — с 2.15
+  cu126 больше не выходит). Обновление образа поднимает torch только по этому правилу; проверка вживую —
+  `torch.version.cuda` и `torch.cuda.get_device_capability()` на самой ноде. Источник: release notes PyTorch 2.11.0
+  (2026-03-23, «Volta (SM 7.0) GPU support removed from CUDA 12.8 and 12.9 binary builds») и анонс 2026-01-15;
+  проверено 2026-11-13. Симптом нарушения — `no kernel image is available for execution on the device` на V100.
 - Модель `Systran/faster-whisper-small` (4 файла, ревизия и sha256 закреплены) → `ComfyUI/models/whisper/faster-whisper-small`
   (на E2E это `/home` — переживает перезапуск).
 - VRAM: каждый workflow грузит одну 1.7B-модель → `gpu_min_vram_gb` 12 → 8 (оценка, не замер).

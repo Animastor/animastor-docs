@@ -4,6 +4,27 @@ All notable changes to Animastor are documented here.
 
 ---
 
+## 2026-11-14
+
+### Architecture (VBook v4, шаг 1 — формат; ветка `feat/vbook-v4`, не выкачено)
+
+- **`@animastor/vbook-runtime` 0.5.0** (не опубликован) — формат VBook 4 по `architecture/VBOOK_FORMAT_V4.md` §12,
+  шаг 1: раскладка `manifest.json` (`vbook_version: 4`) / `book.json` / `behaviour.json` / `characters/<id>.json` /
+  `chapters/`; модель `{manifest, book, bible, locations, behaviour, heroes[], hero_issues[], chapters[]}`;
+  хранилище героев с атомарной записью; `validateCharacterFile` / `validateBehaviourGlobals`; схемы
+  `character-1` и `vbook-bundle-4`; `resolveHeroLook`; порт голоса переведён на файл героя. **VBook 3.1 не
+  читается**: `unsupported_vbook_version` (импорт 422, `GET /book` и скачивание 409).
+- **backend**: один импорт `.vbook` вместо трёх копий, экспорт по белому списку (`?skip_broken=1`), версия в
+  снимках, книга 3.1 в списке книг — `unsupported: true`.
+- **Безопасность импорта**: белый список записей — раскладка v4; файлы 3.1 в архиве v4 пропускаются; путь героя и
+  референса — только внутри своей папки; архив без `manifest.json` в корне — `manifest_not_in_root`.
+- **ADR**: статус, §12 шаг 2 — нормализация id героя от LLM (транслитерация, детерминированное разведение
+  коллизий, тесты на русские имена), новый §12а — что сделано шагом 1 и найденные расхождения Р1–Р8.
+- До шагов 2–4 в ветке не работают: редактирование героев (маршруты 3.1 отвечают 409 `vbook_v4_pending`),
+  ассистент по путям `/characters` / `/voices` / `/behaviors`, анализ и генерация по прежним картам.
+
+---
+
 ## 2026-11-13
 
 ### Architecture (уточнение ADR VBook v4; код не начат)

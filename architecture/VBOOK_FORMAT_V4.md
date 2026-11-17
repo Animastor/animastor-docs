@@ -1,8 +1,9 @@
 # VBook v4 — «файл на героя» (ADR)
 
 Статус: **решение принято; шаги 1 (формат, `vbook-runtime` 0.5.0) и 2 (анализ пишет героев, `ai-analysis` 0.2.0)
-сделаны в ветке `feat/vbook-v4` `animastor-backend` (14.11 и 16.11) и не выкачены, шаги 3–6 не начаты** (решение — 2026-11-12; порядок работ и ответы
-владельца уточнены 13.11 — §12, §13; что именно сделано шагом 1 и что он показал — §12а, шагом 2 — §12б). §12 — задания кодерам по
+и 3 (генерация читает героев, `generation` 0.3.0) сделаны в ветке `feat/vbook-v4` `animastor-backend` (14.11, 16.11,
+17.11) и не выкачены, шаги 4–6 не начаты** (решение — 2026-11-12; порядок работ и ответы
+владельца уточнены 13.11 — §12, §13; что именно сделано шагом 1 и что он показал — §12а, шагом 2 — §12б, 2б — §12в, §12г, шагом 3 — §12д). §12 — задания кодерам по
 репозиториям с критериями приёмки. Карточка героя — [`../05-frontend/HERO_CARD.md`](../05-frontend/HERO_CARD.md).
 
 База: `main` + `feat/behaviour-p0` (поведения, [`VBOOK_BEHAVIOUR.md`](VBOOK_BEHAVIOUR.md)) + `feat/voice-references`
@@ -934,6 +935,46 @@ pronunciation», а рассуждающая модель без выключе�
   `manner`» работает на деле.
 - **В план шага 4** (ниже, «Шаг 4»): тест соединения провайдера и чат-ассистент учитывают `disable_thinking` /
   `reasoning_effort`.
+
+### 12д. Шаг 3 — генерация читает героев (17.11)
+
+Ветка `feat/vbook-v4` `animastor-backend`, не выкачено; отчёт `reports/2026-11-17/vbook-v4-step3.md`.
+
+- **Картинки и видео — только через `resolveHeroLook`.** `prompt-builder.js`: `resolvePassport` / `resolveField` удалены,
+  внешность участника — `resolveHeroLook(book, chapter, scene, id)`, список героев — `passportHeroes`; за
+  потребителем остались отбрасывание заглушек и склейка описания, а также прежнее нечёткое сопоставление
+  участника с именем героя (по 4 первым буквам слова). `video-workflows.js`: `buildCharLines(participants, book,
+  scene, chapter)` берёт токены из `resolveHeroLook`, запасной вариант при совпадении наборов — `base.video_tokens`;
+  книгу видео-сборщик видит только через `BookDataPort` пакета `generation` (две новые операции —
+  `resolveHeroLook`, `passportHeroes`, привязаны в корне композиции). Токен-строка (формат 3.1) не читается
+  (Н13). `chapter.character` и `scene.visual.character` не читаются (Н20).
+- **Приёмка «промпты = эталон 3.1».** Фикстура `backend/tests/fixtures/vbook-v4-step3/book.cjs` — одна книга в двух
+  формах: 3.1 (`characters`, `scene.passport`, `chapter.character`) и v4 (герои, облик главы, `look_patch`).
+  `golden.json` снят кодом 3.1 до изменений; промпты v4 совпадают с ним (5 картинок, 3 видео). Эталон фиксирует
+  и поведение 3.1: участник `berlioz` (неточный id) попадает в картинку через нечёткое сопоставление, но не в
+  видео (там только точный id) — сохранено.
+- **Реестр инвалидации** (`generation` 0.3.0). `scene.passport` и `characters.passport` заменены производным
+  ключом сцены `scene.resolved_looks` → image + video. `computeSceneDirtyLayers(old, new, {old:{book, chapter},
+  new:{book, chapter}, resolveHeroLook})`; резолвер передаёт хост (`book-diff.cjs`) — пакет остаётся без
+  зависимостей от `vbook-runtime`. Без контекста ключ отсутствует. `characters.voice` и `book.voices` заменены
+  `heroes.voice`: audio — только при смене **закреплённого** референса (`sha256`, `ref_text`); голос диктора →
+  все сцены, другого героя → сцены, где он участник или говорящий (`unit.audio.speaker`). Отличие от §8.2:
+  `timbre` / `manner` audio не помечают — оставлено правило задачи референсных голосов (`generation` 0.2.0:
+  чанк клонируется с референса, `timbre` / `manner` чанков не меняют). Вопрос владельцу — отчёт шага 3.
+  `extractPassport` удалён; `orchestration` 1.4.1 — зависимость `generation` ^0.3.0.
+- **Поведение.** `behaviour-rules.js`: правила книги = `behaviour.json` (`scope: "global"`) ⊕ правила файлов
+  героев (`scope: "character"`, `heroRules`); `defaults.max_per_scene` — из `behaviour.json`; дубль `id` —
+  первый источник + предупреждение `duplicate_rule_id`; битый `behaviour.json` — как отсутствующий (В5), правила
+  героев действуют. `behaviour-p0.test.js` зелёный на v4: блок «[v4-pending step 3]» переписан на v4; блоки
+  шага 4 (API 3.1 редактора и ассистента) отложены.
+- **Один слой статусов референса** (В9). `referenceStatus` (`audio/voice-references.js`) — отображение
+  `isReferenceVerified` и `referenceState` порта; собственное чтение файла и сверка sha256 убраны; `path` / `bytes`
+  годного референса — `resolveReferenceFile` + `stat`. Ссылка в папку другого героя — `malformed`, симлинк —
+  `file_missing`. Текст для TTS — `voiceInstruct(hero)` = `join(timbre, manner)`; потребителя в синтезе у него
+  сейчас нет: синтез идёт только с закреплённым референсом, кандидат референса создаётся из
+  `voiceDesignDescription` (герой — `timbre`, диктор — `timbre + manner`).
+- **`scripts/audit-video-actions.js`** — состав из `characters/<id>.json`; `characters.json` / `mentions.json`
+  не читаются; битый файл героя — FAIL, алиас у двух героев — WARN.
 
 ### Порядок публикации пакетов (владелец)
 

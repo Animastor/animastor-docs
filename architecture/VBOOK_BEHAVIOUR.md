@@ -144,6 +144,12 @@ state  iu-0000e001 {boris_volkov: proud}  → behaviour [boris_volkov.praised]
 | `unit.behaviour_locked` | — | вход матчера |
 | иное неизвестное поле | audio + image + video | catch-all сохранён |
 
+**VBook 4 (шаг 3, ветка `feat/vbook-v4`, не выкачено).** Матчер получает правила книги из `behaviour.json`
+(`rules` как `scope: "global"`, `defaults.max_per_scene`) и из файлов героев (`behaviour.rules` как
+`scope: "character"`, `character_id` = id героя) — `heroRules()` `vbook-runtime`; `behavior.json` не читается.
+Дубль `id` правила — первый источник, остальные не применяются, предупреждение `duplicate_rule_id`; битый
+`behaviour.json` — как отсутствующий (В5), правила героев действуют (`VBOOK_FORMAT_V4.md` §6.3, §12д).
+
 Правка правил в `behavior.json` сама по себе ничего не помечает dirty: применённые фразы — снимок в IU. PATCH/POST/DELETE поведений героев тоже без dirty-propagation (записи героев генерацией не читаются).
 
 ## 7. Пути записи от клиентов

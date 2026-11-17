@@ -100,6 +100,10 @@ sitting), different composition — or different participants entirely.
 - **Characters** have global passports. Reference a character **by name only** — the
   appearance is pulled in automatically behind the name. Re-describe appearance **only**
   when it deviates from baseline: wounded, wet, changed clothes, dirty.
+  - **VBook 4 (step 3):** the scene override is `scene.look_patch[charId]` and the whole
+    appearance comes from `resolveHeroLook` (scene look → chapter look → base passport →
+    look_patch; an empty value counts as absent) — `architecture/VBOOK_FORMAT_V4.md` §4a.5.
+    The paragraph below is the 3.1 behaviour.
   - **Scene-level overrides** (`scene.passport[charId]`): if character in specific
     scene changed something from passport (clothes, details etc.), can override only
     these fields at scene level — e.g. `scene.passport.hero.clothes =

@@ -27,6 +27,19 @@ All notable changes to Animastor are documented here.
 - **Скрипт приёмки 2.6** — правило В4 по умолчанию (пустая `manner` → WARN, exit 0; пустой `timbre` — провал),
   флаг `--allow-empty-manner` убран.
 
+### Architecture (VBook v4, шаг 3 — генерация читает героев; ветка `feat/vbook-v4`, не выкачено)
+
+- **Картинки и видео читают внешность только через `resolveHeroLook`** (облик сцены → облик главы → паспорт,
+  затем `look_patch`); `resolvePassport`, `scene.passport`, `book.characters` в генерации не читаются. Промпты книги
+  v4 совпадают с эталоном 3.1 той же книги (фикстура шага 3). `architecture/VBOOK_FORMAT_V4.md` §12д.
+- **Реестр инвалидации (`@animastor/generation` 0.3.0):** производный ключ `scene.resolved_looks` → image + video
+  ровно тех сцен, где изменилась итоговая внешность; голос героя — `heroes.voice` (audio при смене закреплённого
+  референса). `@animastor/orchestration` 1.4.1.
+- **Поведение:** правила книги — из `behaviour.json` и файлов героев.
+- **Референс голоса:** один слой статусов поверх `referenceState` порта.
+- `scripts/audit-video-actions.js` читает героев v4. Профильные документы: `GENERATORS.md`, `IMAGINATION_UNIT.md`,
+  `VBOOK_BEHAVIOUR.md`, `ai-functional-decomposition-c18.md`.
+
 ### Architecture (VBook v4, остатки шага 2б — решения владельца 17.11; ветка `feat/vbook-v4`, не выкачено)
 
 - **Слияние героя по `mentions` — только при двух и более разных уликах**; одна улика — новый герой и строка журнала

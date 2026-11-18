@@ -4,6 +4,34 @@ All notable changes to Animastor are documented here.
 
 ---
 
+## 2026-11-18
+
+### Architecture (VBook v4, шаг 4 — API героя; ветка `feat/vbook-v4`, не выкачено)
+
+- **API героя** (`@animastor/editor` 0.5.0): `GET/POST /heroes`, `GET/PATCH/DELETE /heroes/:heroId` (белый список
+  полей, `if_rev` → 409 `rev_conflict`, диктора удалить нельзя — 409 `narrator_required`, `?broken=1`), правила и
+  облики героя, `POST /looks/assign`, `GET/PATCH /behaviour`, `PATCH /scene` с `looks.<id>` и `look_patch.<id>.<поле>`.
+  Битый файл с именем, которое не id, — `DELETE /hero-files?file=<имя>` (только имя из текущего `hero_issues`).
+  Запись героя — точечная, через `characterStore`. Маршруты 3.1 `/characters`, `/voices`, `/behaviors` и временный
+  409 `vbook_v4_pending` удалены. Вычисляемые поля героя: `rev`, `voice.reference_state`, `voice.reference_outdated`,
+  `image_refs[].state`. `architecture/VBOOK_FORMAT_V4.md` §8.2, §12е.
+- **Референс голоса — на герое**: `/heroes/:heroId/voice/candidates[/design|/upload|/:name]`, `/voice/file/:name`,
+  `/voice/reference`; команды — только с `client_action.action_id` (загрузка своего образца тоже); старые
+  `/voices/references…` удалены. Контракт для фронтов — `05-frontend/HERO_CARD.md` §6, §10.
+- **Решения владельца 18.11 (§13 В17–В20):** audio — только при смене закреплённого референса; при закреплении
+  пишется `source_timbre_sha256` (схема героя), API отдаёт `voice.reference_outdated`, ничего не перегенерируется
+  само; резолвер облика в реестр инвалидации передаёт хост; нечёткое сопоставление участников убрано (картинка и
+  видео — только точный id), неизвестный участник — предупреждение `unknown_participant`; возможные дубликаты
+  анализа — `possible_duplicate` в `hero_issues` (`blocking: false`), хранятся в `book.json`
+  `analysis.possible_duplicates`.
+- **Книга 3.1** — генерация, анализ, редактор и ассистент отвечают 409 `unsupported_vbook_version` тем же телом, что
+  `GET /book`; удаление книги разрешено (`architecture/VBOOK_FORMAT_V4.md` §9).
+- **Ассистент** (`@animastor/assistant` 0.3.0): `edit_book` по `/heroes/<id>/…` (id, не индекс), старые пути —
+  отказ с подсказкой; промпт о героях.
+- **Провайдер:** тест соединения и чат-ассистент применяют `disable_thinking` / `reasoning_effort` тем же хелпером
+  `ai-reasoning.js`, что анализ — `architecture/EXPERIMENTAL_BETA_PERSONAL_AI_PROVIDER.md` §18a.
+- `@animastor/player` 0.1.5 — на `vbook-runtime` ^0.5.0.
+
 ## 2026-11-17
 
 ### Architecture (VBook v4, шаг 2б — правки по приёмке 2.6; ветка `feat/vbook-v4`, не выкачено)

@@ -3,6 +3,8 @@
 Статус: **web реализован** в ветке `feat/hero-card` (`animastor-web` `b80b24e`, 2026-11-12) на контракте VBook v4;
 **Android — спецификация** (§8, GAP в [`ANDROID_WEB_PARITY.md`](../architecture/ANDROID_WEB_PARITY.md)). Работает
 только с backend шагов 1–4 [`VBOOK_FORMAT_V4.md`](../architecture/VBOOK_FORMAT_V4.md) §12; до него не выкатывается.
+Backend шага 4 сделан 18.11 (ветка `feat/vbook-v4`, не выкачен): точный контракт маршрутов и кодов —
+`VBOOK_FORMAT_V4.md` §12е; что из него должна поправить карточка — §10.
 
 Формат героя, API и коды ошибок — `VBOOK_FORMAT_V4.md` §4, §8.2, §9, §10.3. Здесь — только поведение экрана.
 
@@ -172,22 +174,24 @@
 - Сервер без этих маршрутов (404 / 405 / 501) — в блоке «Референсы голоса на этом сервере пока недоступны»;
   остальная карточка работает.
 
-Маршруты, которых ждёт карточка (форма маршрутов задачи референсных голосов, перенесённая на героя; префикс
-`/book/:id/heroes/:heroId`):
+Маршруты блока (backend шага 4, `VBOOK_FORMAT_V4.md` §12е; префикс `/book/:id/heroes/:heroId`):
 
 | Маршрут | Назначение |
 |---|---|
-| `GET /voice/candidates` | `{candidates: [{name, file, sha256, ref_text?, source?, model?, seed?, verification?, duration_ms?, pinned?, state?}], pending?}` |
-| `POST /voice/candidates/design` | `{count, client_action}` — команда генерации |
-| `POST /voice/candidates/upload` | multipart: `file`, `ref_text` |
-| `POST /voice/reference` | `{name, locked: true}` — закрепить кандидата |
+| `GET /voice/candidates` | `{candidates: [{name, candidate_id, status, source, file, sha256, ref_text, ref_text_source, model, seed, verification, verification_problems, duration_ms, pinned}], pending, reference_status, reference_outdated, design_description, phrase, duration_bounds_sec}`; `status` — `pending` / `ready` / `failed` |
+| `POST /voice/candidates/design` | `{count, client_action}` — команда генерации; без `client_action.action_id` — 400 `no_user_action` |
+| `POST /voice/candidates/upload` | multipart: `file`, `ref_text`, **`client_action`** (JSON-строка того же вида) — тоже команда (транскрипция на GPU); до 20 МБ (413) |
+| `DELETE /voice/candidates/:name` | удалить кандидата (закреплённый — 409 `candidate_locked`) |
+| `POST /voice/reference` | `{name, locked: true}` — закрепить кандидата; `ref_text` — необязательная правка текста загруженного образца |
 | `DELETE /voice/reference` | открепить (файл остаётся) |
-| `GET /voice/file/:name` | аудио для плеера |
-| `GET /looks/:lookId/image` | референс-картинка облика (когда появится) |
-| `POST /image-refs` | multipart: `file`, `kind` |
-| `PATCH /image-refs/:index` | `{fields: {kind}}`; `kind: "portrait"` снимает `portrait` с остальных |
-| `DELETE /image-refs/:index` | удалить ссылку и файл |
-| `GET /image-refs/:index/file` | картинка |
+| `GET /voice/file/:name` | аудио для плеера (`audio/wav`) |
+| `GET /looks/:lookId/image` | референс-картинка облика — **шаг 7**, сейчас 404 |
+| `POST /image-refs` · `PATCH /image-refs/:index` · `DELETE /image-refs/:index` · `GET /image-refs/:index/file` | референс-картинки — **шаг 7**, сейчас 404 |
+
+`name` — имя файла кандидата `<id>.wav` (у закреплённого референса — то же имя: `voice.reference.file` =
+`voices/<hero>/<name>`). `voice.reference_outdated: true` — референс создан из другого тембра (после правки
+«Тембра»); карточке стоит показать это в заголовке блока («тембр изменён после создания референса») — ничего не
+перегенерируется само.
 
 Первая загруженная картинка получает `kind: "portrait"`, следующие — `other`.
 
@@ -196,7 +200,9 @@
 | Состояние | Экран |
 |---|---|
 | Книга 3.1 (`unsupported_vbook_version`) | вместо редактора: «Формат книги не поддерживается. Книга сохранена в формате VBook 3.1… Импортируйте исходный текст заново». Без повторных попыток загрузки. Тот же текст — при импорте и на любом экране, который показывает ошибку запроса |
-| Битый файл героя (`hero_issues`, `blocking: true`) | красная плитка: id или имя файла, «Файл героя повреждён», текст причины, «Удалить файл» → подтверждение → `DELETE …?broken=1` |
+| Битый файл героя (`hero_issues`, `blocking: true`) | красная плитка: id или имя файла, «Файл героя повреждён», текст причины, «Удалить файл» → подтверждение → `DELETE /heroes/:hero_id?broken=1`, а если у проблемы нет `hero_id` (имя файла — не id: `Юра.json`, `notes.txt`) — `DELETE /book/:id/hero-files?file=<имя из file без "characters/">` |
+| Возможный дубликат (`possible_duplicate`, `blocking: false`, `{hero_id, of, evidence}`) | жёлтая строка в карточке героя `hero_id`: «Возможно, это тот же герой, что <имя `of`>» и улики; ничего не сливается |
+| Неизвестный участник сцены (`unknown_participant`, `blocking: false`, без `hero_id`) | не относится к карточке; показывать в списке предупреждений книги (вкладка «Сцена») — шаг 5 решает где |
 | Предупреждение по герою (`blocking: false`) | жёлтая строка вверху его карточки |
 | Открытый герой исчез (удалён в другом месте) | возврат в сетку |
 | Ошибка действия | красная строка вверху карточки; данные на экране не меняются |
@@ -259,3 +265,23 @@
 5. Книги на legacy-оркестрации: команда кандидатов вернёт отказ сервера — показать его текст в блоке референса
    (сейчас — общая строка ошибки карточки).
 6. Словарь эмоций отдавать с сервера (сейчас константа `BEHAVIOUR_EMOTIONS` — копия `behaviour-emotions.js`).
+
+## 10. Что поправить в карточке под backend шага 4 (шаги 5–6)
+
+Контракт backend — `VBOOK_FORMAT_V4.md` §12е. Расхождения с тем, что сейчас делает `heroApi.ts` (`fb9f5cf`):
+
+1. **Загрузка своего образца — команда.** `uploadVoiceCandidate` должен класть в форму поле `client_action`
+   (JSON-строка `{kind: "user_click", source: "hero_card.voice_upload", action_id, trusted}` из того же `userClick`);
+   без него — 400 `no_user_action`.
+2. **Список кандидатов** приходит со `status` (`pending` / `ready` / `failed`), `verification_problems`, `pinned`;
+   `pending` на верхнем уровне — признак опроса раз в 3 с. Закреплять можно только `ready` с `verification: passed`
+   (иначе 409 `candidate_not_verified`).
+3. **`voice.reference_outdated`** — новое вычисляемое поле в `GET /book` (см. §6).
+4. **Битый файл с неканоническим именем** — `DELETE /book/:id/hero-files?file=<имя>` (§7).
+5. **Ошибки** приходят как `{error: <код>, message}`: показывать `message`, код — для ветвлений (`rev_conflict`).
+6. **`dirty_scenes`** в ответах героя и обликов — массив `{chapter_id, scene_id, reason, dirty_layers}`.
+7. **`PATCH passport: null`** у героя с обликами — 400 `invalid_character`: сначала удалить облики (карточка может
+   спрашивать об этом в диалоге «Убрать внешность»).
+8. **`POST /heroes`** отвечает 201 (не 200).
+9. Android (шаг 6) — те же пункты в `HeroModel.kt` / `BackendApi.kt`.
+

@@ -1,9 +1,10 @@
 # VBook v4 — «файл на героя» (ADR)
 
-Статус: **решение принято; шаги 1 (формат, `vbook-runtime` 0.5.0) и 2 (анализ пишет героев, `ai-analysis` 0.2.0)
-и 3 (генерация читает героев, `generation` 0.3.0) сделаны в ветке `feat/vbook-v4` `animastor-backend` (14.11, 16.11,
-17.11) и не выкачены, шаги 4–6 не начаты** (решение — 2026-11-12; порядок работ и ответы
-владельца уточнены 13.11 — §12, §13; что именно сделано шагом 1 и что он показал — §12а, шагом 2 — §12б, 2б — §12в, §12г, шагом 3 — §12д). §12 — задания кодерам по
+Статус: **решение принято; шаги 1 (формат, `vbook-runtime` 0.5.0), 2 (анализ пишет героев, `ai-analysis` 0.2.0),
+3 (генерация читает героев, `generation` 0.3.0) и 4 (API героя, `editor` 0.5.0, `assistant` 0.3.0) сделаны в ветке
+`feat/vbook-v4` `animastor-backend` (14.11, 16.11, 17.11, 18.11) и не выкачены, шаги 5–6 не начаты** (решение —
+2026-11-12; порядок работ и ответы владельца уточнены 13.11 — §12, §13; что именно сделано шагом 1 и что он показал —
+§12а, шагом 2 — §12б, 2б — §12в, §12г, шагом 3 — §12д, шагом 4 — §12е; решения владельца 18.11 — §13). §12 — задания кодерам по
 репозиториям с критериями приёмки. Карточка героя — [`../05-frontend/HERO_CARD.md`](../05-frontend/HERO_CARD.md).
 
 База: `main` + `feat/behaviour-p0` (поведения, [`VBOOK_BEHAVIOUR.md`](VBOOK_BEHAVIOUR.md)) + `feat/voice-references`
@@ -259,6 +260,10 @@ extract(scene, { book, chapter }) = участники сцены с passport �
     { [hero_id]: { appearance, clothes, video_tokens } }   // из resolveHeroLook
 ```
 
+**Резолвер передаёт хост** (решение владельца 18.11, §13 В18): `extract` получает в контексте ещё и
+`resolveHeroLook` — его передаёт `book-diff.cjs`, поэтому `@animastor/generation` остаётся без зависимости от
+`vbook-runtime` (граница G7).
+
 Сравнивается итог, а не источники, поэтому грязными становятся ровно те сцены, где итоговая внешность участника
 изменилась: правка полей облика — сцены, где он действует; назначение на главу — сцены главы без собственной ссылки;
 правка базового поля — только сцены, где его не перекрывает облик (сегодня правка паспорта помечает все сцены
@@ -311,7 +316,10 @@ status: "suggested" | "accepted"}`:
   копии выбора голоса (`audio/segments.js`, два места в `audio/generation.js`) и их мёртвая ветка
   `characters[i].voice.instruction` заменяются одним вызовом.
 - Говорящий, который не является героем или не имеет `voice`, озвучивается голосом диктора — как сегодня.
-- Инвалидация: `timbre`, `manner`, `reference.sha256` → слой audio (§12, шаг 3).
+- Инвалидация (решение владельца 18.11, §13 В17): слой audio помечается **только при смене закреплённого
+  референса** (`reference.sha256`, `reference.ref_text`): синтез клонирует каждый чанк с референса, а `timbre` /
+  `manner` звук не меняют. Правка `timbre` / `manner` audio не помечает и ничего не перегенерирует; что референс
+  создан из другого тембра, API сообщает отдельно — `voice.reference_outdated` (§5.2).
 
 ### 5.2 `voice.reference` — согласование с задачей «референсные голоса»
 
@@ -343,6 +351,11 @@ ref)`, `listVoiceIds`, `voiceDesignDescription`, `cleanVoiceDescription`. Зад
   `voices/<id>/uploads/`, и в файл героя не попадает — в нём только канонический `.wav`.
 - **Состояние** вычисляется, в файл не пишется: `ok` (файл есть, sha256 совпал) / `missing` / `mismatch`. API отдаёт
   его как `voice.reference_state`.
+- **Из какого тембра сделан референс** (решение владельца 18.11, §13 В17): при закреплении в `reference` пишется
+  `source_timbre_sha256` — sha256 текста `voice.timbre` (UTF-8, без пробелов по краям) в этот момент. API героя отдаёт
+  вычисляемое `voice.reference_outdated = true`, если текущий `timbre` даёт другой хэш (`isReferenceOutdated`
+  порта); у референса без поля — `false`. **Без автозапуска**: перегенерация — только явной командой «Создать
+  кандидатов».
 - **Кандидаты** (`ref_01.wav`, `ref_02.wav`, …) — контент: лежат в `build_<book_id>/voices/<id>/`, в `.vbook` не
   попадают. В файле героя — только закреплённый.
 - **`locked: true`** — автоматическая замена запрещена. Замена, перегенерация, снятие — только явной командой.
@@ -443,34 +456,47 @@ book = { manifest, book, bible, locations, behaviour, heroes[], hero_issues[], c
 `GET /api/v1/book/:id` → `{manifest, book, bible, locations, behaviour, heroes, hero_issues, chapters, scene_list}`.
 Полей `characters`, `voices`, `behaviors`, `behavior_rules` нет.
 
-Вычисляемые поля героя в ответе (в файл не пишутся, во входящих телах игнорируются): `rev` — первые 16 hex sha256
-канонической сериализации героя; `voice.reference_state`, `image_refs[].state` — `ok` | `missing` | `mismatch`.
+Вычисляемые поля героя в ответе (в файл не пишутся, во входящих телах игнорируются, `PUT /book` их снимает): `rev` —
+первые 16 hex sha256 канонической сериализации героя (байты файла); `voice.reference_state`, `image_refs[].state` —
+`ok` | `missing` | `mismatch`; `voice.reference_outdated` (§5.2).
+
+Тело ошибки маршрутов героя — `{error: <код>, message, …подробности}` (та же форма, что у
+`unsupported_vbook_version`). Доступ — `requireBookAccess` на `/api/v1/book/:bookId`; `:heroId` проверяется стражем
+ввода по одной грамматике (`CANONICAL_ID_RE`, до 64, один сегмент; иначе 400 `invalid_hero_id`), `:lookId` — так же
+(400 `invalid_look_id`), `:ruleId` — один сегмент. Полный список маршрутов и кодов — §12е.
 
 | Маршрут (`@animastor/editor`) | Назначение |
 |---|---|
+| `GET /book/:id/heroes` · `GET /book/:id/heroes/:heroId` | список (`heroes`, `hero_issues`) · один герой (`hero`, `issues`); 404 `hero_not_found`, 409 `hero_file_broken` |
 | `POST /book/:id/heroes` | создать: `{id?, name, role?, passport?, voice?}`; id из имени — существующий `resolveId`; 409 `hero_exists`, 400 `reserved_id` |
 | `PATCH /book/:id/heroes/:heroId` | `{fields, if_rev?}`; пути по белому списку: `name`, `role`, `aliases`, `notes`, `passport.appearance`, `passport.clothes`, `passport.video_tokens`, `voice.timbre`, `voice.manner`, `behaviour.profile.baseline`, `behaviour.profile.quirks`, `behaviour.profile.reactions`; `passport: null` / `voice: null` снимают блок; 409 `rev_conflict` |
 | `DELETE /book/:id/heroes/:heroId` | удалить файл героя; 409 `narrator_required`; `?broken=1` — удалить битый файл |
+| `DELETE /book/:id/hero-files?file=<имя>` | битый файл с именем, которое не id (`Юра.json`, `notes.txt`; решение В14): только имя из текущего `hero_issues` (404 `not_in_hero_issues`), только одно простое имя (422 `invalid_file_name`); симлинк удаляется как ссылка |
 | `POST /book/:id/heroes/:heroId/rules` · `PATCH …/rules/:ruleId` · `DELETE …/rules/:ruleId` | правила героя; `PATCH {enabled}` — выключатель в карточке |
 | `POST /book/:id/heroes/:heroId/looks` · `PATCH …/looks/:lookId` · `DELETE …/looks/:lookId` | облики: создать `{id?, label, fields}`; править `{fields: {label, notes, "fields.appearance", "fields.clothes", "fields.video_tokens"}}` (`null` убирает поле из облика; последнее поле убрать нельзя — 400 `look_empty`); удалить — снимает все ссылки, в ответе `unassigned` |
 | `POST /book/:id/looks/assign` | назначить: `{hero_id, look_id, chapters: [chapter_id], scenes: [{chapter_id, scene_id}]}`; `look_id: "base"` для сцены — базовый вопреки главе; `look_id: null` — снять ссылку. Одна операция на любой набор глав и сцен; в ответе `dirty_scenes` |
 | `PATCH /book/:id/scene/:chapterId/:sceneId` (существующий) | поля `looks.<hero_id>` и `look_patch.<hero_id>.<поле>` вместо `passport.<hero_id>.<поле>` |
 | `GET /book/:id/behaviour` · `PATCH /book/:id/behaviour` | глобальные дефолты и правила |
-| референс голоса и кандидаты | заводит задача референсных голосов; что ждёт карточка — `HERO_CARD.md` §6 |
+| `…/heroes/:heroId/voice/…` (хост, `orchestration-v2/voice-routes.js`) | референс голоса и кандидаты — маршруты задачи референсных голосов, перенесённые на героя (шаг 4): `GET candidates`, `POST candidates/design` и `POST candidates/upload` (только с `client_action.action_id`), `DELETE candidates/:name`, `GET file/:name`, `POST reference {name, locked: true}`, `DELETE reference`; `name` — имя файла кандидата `<id>.wav`. Старые `/voices/*` удалены. Контракт — `HERO_CARD.md` §6 |
 | `POST /book/:id/heroes/:heroId/image-refs` (multipart) · `PATCH …/:index` · `DELETE …/:index` | референс-картинки |
 
 Удаляются: `POST/PATCH/DELETE /characters`, `/voices`, `/behaviors`.
 
 Dirty: внешность — по производному ключу `scene.resolved_looks` (§4a.5): `passport.*`, поля обликов, назначения и
-`look_patch` → image + video тех сцен, где изменился итог; `voice.timbre`, `voice.manner`, `voice.reference.sha256` → audio; `name`, `role`,
-`aliases`, `notes`, `image_refs`, `behaviour.*` — ни один слой (сработавшие правила — снимок в IU).
+`look_patch` → image + video тех сцен, где изменился итог; смена закреплённого референса (`voice.reference.sha256`,
+`ref_text`) → audio (решение 18.11, §5.1); `voice.timbre`, `voice.manner`, `name`, `role`, `aliases`, `notes`,
+`image_refs`, `behaviour.*` — ни один слой (сработавшие правила — снимок в IU). Ответ маршрутов героя и обликов —
+`dirty_scenes: [{chapter_id, scene_id, reason, dirty_layers}]`.
 
 `PUT /book/:id`: тело без `heroes` не меняет героев; пустой массив `heroes` при непустом каталоге — 400 (защита от
 затирания устаревшим ответом, сегодня такая же стоит для `characters`).
 
 Ассистент (`edit_book`): пути `/heroes/<id>/…` — сегмент после `/heroes/` это **id героя**, не индекс массива (страж
-путей в `chat-engine.cjs` переводит в индекс перед применением). Пути `/characters`, `/voices`, `/behaviors`
-отклоняются с подсказкой.
+путей в `chat-engine.cjs` переводит в индекс перед применением); `add /heroes/<новый id>` добавляет героя. Пути
+`/characters`, `/voices`, `/behaviors`, `/behavior_rules`, `/mentions` отклоняются с подсказкой; отклоняются также
+замена или удаление всего `/heroes`, адресация по индексу, `id` / `schema` / `rev` героя, `voice.reference` (закрепляет
+только карточка) и удаление диктора. Запись — через `assistant-ports.cjs`: `saveBookBundle`, а без глав — файлы героев
+только через `characterStore`.
 
 ---
 
@@ -485,7 +511,7 @@ Dirty: внешность — по производному ключу `scene.re
 | Импорт `.vbook` v4, а на сервере уже лежит книга 3.1 с тем же id | 409 с тем же телом плюс `existing_book_id`, `hint: "delete_existing_book"`; `message` — «удалите старую книгу и повторите импорт» (В16). Старая книга не открывается и не заменяется |
 | `GET /book/:id` книги 3.1, лежащей на сервере | 409 с тем же телом; файлы книги не меняются |
 | Список книг | книга показывается с `unsupported: true` и названием из манифеста; доступно только удаление |
-| Генерация, анализ, редактор, ассистент для такой книги | 409 `unsupported_vbook_version` |
+| Генерация, анализ, редактор, ассистент для такой книги | 409 `unsupported_vbook_version` — то же тело, что у `GET /book` (шаг 4: шлюз `middleware/vbook-version-gate.js` на `/api/v1/book/:bookId` после проверки доступа и на `/api/v1/ai` после AI-стража; пропускается только `DELETE /book/:id`) |
 | Версия больше 4 | то же, `message` — «книга создана более новой версией Animastor» |
 
 Текст `message` (ru / en по языку запроса, те же строки в i18n фронтов):
@@ -541,10 +567,13 @@ Dirty: внешность — по производному ключу `scene.re
 
 - **Книга загружается.** Битого героя нет в `heroes`; в `hero_issues` — `{file, hero_id?, code, message,
   blocking: true}`, коды `unreadable`, `invalid_json`, `schema`, `filename_mismatch`. Предупреждения
-  (`blocking: false`): `unknown_key`, `duplicate_rule_id`, `ambiguous_alias`. Строка в журнале backend.
+  (`blocking: false`): `unknown_key`, `duplicate_rule_id`, `ambiguous_alias`, `narrator_missing`, а с шага 4 (решения
+  18.11, §13 В19, В20) — `possible_duplicate` (`{hero_id, of, evidence}`) и `unknown_participant` (`{participant,
+  scenes}`). Строка в журнале backend.
 - **Файл не трогается**: не удаляется, не перезаписывается, не «чинится».
 - **Запись в этот id отклоняется**: создание героя с id битого файла и `PATCH` — 409 `hero_file_broken`. Выходы:
-  `DELETE /heroes/:id?broken=1` или исправление файла вручную.
+  `DELETE /heroes/:id?broken=1`, для имени, которое не id, — `DELETE /hero-files?file=<имя>` (§8.2), или исправление
+  файла вручную.
 - **Сцены** сохраняют id в `participants`. Сборка промптов уже терпит неизвестный id; говорящий без голоса
   озвучивается диктором. Команды генерации возвращают предупреждение `hero_issues` в ответе, не отказ.
 - **Экспорт** книги с битым героем — 409 `hero_file_broken` со списком; `?skip_broken=1` экспортирует без них.
@@ -952,7 +981,9 @@ pronunciation», а рассуждающая модель без выключе�
   формах: 3.1 (`characters`, `scene.passport`, `chapter.character`) и v4 (герои, облик главы, `look_patch`).
   `golden.json` снят кодом 3.1 до изменений; промпты v4 совпадают с ним (5 картинок, 3 видео). Эталон фиксирует
   и поведение 3.1: участник `berlioz` (неточный id) попадает в картинку через нечёткое сопоставление, но не в
-  видео (там только точный id) — сохранено.
+  видео (там только точный id) — сохранено в шаге 3; **в шаге 4 нечёткое сопоставление убрано** (решение 18.11,
+  §13 В19): картинка, как и видео, берёт участника только по точному id, эталонный тест перечисляет два
+  задуманных расхождения (§12е).
 - **Реестр инвалидации** (`generation` 0.3.0). `scene.passport` и `characters.passport` заменены производным
   ключом сцены `scene.resolved_looks` → image + video. `computeSceneDirtyLayers(old, new, {old:{book, chapter},
   new:{book, chapter}, resolveHeroLook})`; резолвер передаёт хост (`book-diff.cjs`) — пакет остаётся без
@@ -976,6 +1007,71 @@ pronunciation», а рассуждающая модель без выключе�
 - **`scripts/audit-video-actions.js`** — состав из `characters/<id>.json`; `characters.json` / `mentions.json`
   не читаются; битый файл героя — FAIL, алиас у двух героев — WARN.
 
+### 12е. Шаг 4 — API героя (18.11)
+
+Ветка `feat/vbook-v4` `animastor-backend`, не выкачено; отчёт `reports/2026-11-18/vbook-v4-step4.md` на сервере.
+`@animastor/editor` 0.5.0, `@animastor/assistant` 0.3.0, `@animastor/player` 0.1.5; в `vbook-runtime` 0.5.0
+(не опубликован) — добавки шага 4; backend держит `editor`, `assistant`, `player` через `file:` до публикации.
+
+**Маршруты героя** (`@animastor/editor`, `src/hero-routes.cjs`; префикс `/api/v1/book/:bookId`; ошибки —
+`{error, message, …}`):
+
+| Метод, путь | Успех | Коды отказа |
+|---|---|---|
+| `GET /heroes` | 200 `{heroes, hero_issues}` | 404 `book_not_found` |
+| `GET /heroes/:heroId` | 200 `{hero, issues}` | 400 `invalid_hero_id`, 404 `hero_not_found`, 409 `hero_file_broken` |
+| `POST /heroes` | 201 `{hero_id, hero, rev}` | 400 `name_required` / `invalid_hero_id` / `reserved_id` / `invalid_field` / `invalid_character`, 409 `hero_exists` / `hero_file_broken` |
+| `PATCH /heroes/:heroId` `{fields, if_rev?}` | 200 `{hero, rev, dirty_scenes}` | 400 `bad_request` / `field_not_editable` / `invalid_field` / `name_required` / `alias_equals_name` / `too_many_aliases` / `too_many_video_tokens` / `narrator_voice_required` / `invalid_character`, 404, 409 `rev_conflict` (с текущим `rev`) / `hero_file_broken` |
+| `DELETE /heroes/:heroId[?broken=1]` | 200 `{deleted, broken, dirty_scenes}` | 404, 409 `narrator_required` / `hero_file_broken` / `hero_not_broken` |
+| `DELETE /hero-files?file=<имя>` | 200 `{deleted, file}` | 422 `invalid_file_name`, 404 `not_in_hero_issues` |
+| `POST /heroes/:heroId/rules` | 201 `{rule_id, hero}` | 400 `invalid_rule`, 409 `rule_exists` |
+| `PATCH /heroes/:heroId/rules/:ruleId` `{fields}` | 200 | 400 `field_not_editable` / `invalid_character`, 404 `rule_not_found` |
+| `DELETE /heroes/:heroId/rules/:ruleId` | 200 | 404 `rule_not_found` |
+| `POST /heroes/:heroId/looks` | 201 `{look_id, dirty_scenes}` | 400 `look_label_required` / `look_empty` / `invalid_look_id`, 409 `look_exists` / `passport_required` |
+| `PATCH /heroes/:heroId/looks/:lookId` `{fields}` | 200 `{dirty_scenes}` | 400 `look_empty` / `look_label_required` / `field_not_editable`, 404 `look_not_found` |
+| `DELETE /heroes/:heroId/looks/:lookId` | 200 `{unassigned, dirty_scenes}` | 404 `look_not_found` |
+| `POST /looks/assign` | 200 `{dirty_scenes}` | 400 `bad_request` / `invalid_hero_id` / `invalid_look_id` / `base_for_chapter`, 404 `look_not_found` / `chapter_not_found` / `scene_not_found`, 409 `passport_required` |
+| `GET /behaviour` · `PATCH /behaviour {fields}` | 200 | 400 `field_not_editable` / `invalid_behaviour`, 409 `behaviour_file_broken` |
+| `PATCH /scene/:chapterId/:sceneId` | 200 | 400 `legacy_field` (`passport.*`), 400 `invalid_look_field` |
+
+Любой маршрут книги 3.1 — 409 `unsupported_vbook_version` (§9). Удалены: `PATCH /characters/:id`, `/voices/:id`,
+`/behaviors/:id`, `POST`/`DELETE` `/characters`, `/voices`, `/behaviors` (404) и временный 409 `vbook_v4_pending`.
+
+**Референс голоса на герое** (хост, `backend/src/orchestration-v2/voice-routes.js`; префикс
+`/api/v1/book/:bookId/heroes/:heroId/voice`):
+
+| Метод, путь | Назначение | Коды |
+|---|---|---|
+| `GET /candidates` | `{candidates: [{name, candidate_id, status, source, file, sha256, ref_text, ref_text_source, model, seed, verification, verification_problems, duration_ms, pinned}], pending, reference_status, reference_outdated, design_description, phrase, duration_bounds_sec}` | 404 `hero_not_found` / `voice_not_found` |
+| `POST /candidates/design` `{count?, client_action}` | команда генерации | 400 `no_user_action`, 409 `reference_locked` / `book_not_v2`, 503 `orch_v2_disabled` |
+| `POST /candidates/upload` multipart `file`, `ref_text?`, `client_action` (JSON) | свой образец (`singleUpload`, до 20 МБ; wav, mp3, ogg, flac) | 400 `no_user_action` / `bad_request`, 413 `file_too_large`, 415 `bad_media_type`, 409 `reference_locked` / `book_not_v2` |
+| `DELETE /candidates/:name` | удалить кандидата | 400 `invalid_name`, 404 `candidate_not_found`, 409 `candidate_locked` / `candidate_pending` |
+| `GET /file/:name` | аудио кандидата (`audio/wav`) | 400 `invalid_name`, 404 `not_found` |
+| `POST /reference` `{name, locked: true, ref_text?}` | закрепить (пишет `source_timbre_sha256`) | 400 `invalid_name` / `locked_required`, 409 `candidate_not_verified` / `candidate_not_ready` / `candidate_file_changed` / `ref_text_required` / `book_not_v2` |
+| `DELETE /reference` | открепить (файл остаётся) | 404 |
+
+`name` — имя файла кандидата `<id>.wav` (кандидат и закреплённый референс — один файл). Текст `ref_text` формы
+загрузки становится `ref_text` кандидата (`ref_text_source: user`), иначе — транскрипт Whisper. Старые
+`/voices/references…`, `/voices/:id/…` удалены. Запись героя — точечная, через `characterStore`
+(`editorModel.heroes(bookId).update`), а не переписыванием книги.
+
+**Решения владельца по шагу 3 в коде** (§13 В17–В20): audio — только при смене закреплённого референса,
+`source_timbre_sha256` и `voice.reference_outdated` (§5.1, §5.2); резолвер от хоста (§4a.5); нечёткое сопоставление
+участников убрано из картинок (в видео его не было), неизвестный id участника — `unknown_participant`; возможные
+дубликаты анализа — `possible_duplicate` в `hero_issues` (`blocking: false`), хранятся в `book.json`
+`analysis.possible_duplicates` (их пишет `lazy-book/create.js` по журналу 2б) и показываются, пока оба героя есть.
+Эталон шага 3: картинки `ch1/s2/u3` и `ch1/s2/u4` теряют строку `mikhail_berlioz: …` — участник `berlioz`
+больше не угадывается; остальные 3 картинки и 3 видео совпадают с эталоном 3.1.
+
+**Провайдер** (§12г): тест соединения (`POST /api/v1/settings/ai/test`, `POST /api/v1/admin/system-ai/test`) и
+чат-ассистент отправляют `disable_thinking` / `reasoning_effort` через один хелпер `ai-reasoning.js`
+(`withReasoning`) — `architecture/EXPERIMENTAL_BETA_PERSONAL_AI_PROVIDER.md` §18a.
+
+**Отличия от буквы плана.** Маршруты `image-refs` и `GET /looks/:lookId/image` (`HERO_CARD.md` §6) не сделаны — это
+шаг 7 («Референс-картинки»); карточка на 404 показывает блок недоступным. `assistant` 0.3.0 не зависит от
+`vbook-runtime`. `PATCH passport: null` у героя с обликами — 400 `invalid_character` (облики без паспорта запрещены
+схемой; сначала удалить облики).
+
 ### Порядок публикации пакетов (владелец)
 
 | № | Пакет | Версия | После шага | Зависит от |
@@ -986,8 +1082,8 @@ pronunciation», а рассуждающая модель без выключе�
 | 3 | `@animastor/generation` | 0.3.0 | 3 | — |
 | 4 | `@animastor/orchestration` | патч над 1.4.0 (1.4.1) | 3 | `generation` ^0.3.0 |
 | 5 | `@animastor/editor` | 0.5.0 | 4 | `vbook-runtime` ^0.5.0 |
-| 6 | `@animastor/assistant` | 0.3.0 | 4 | `vbook-runtime` ^0.5.0 |
-| 7 | `@animastor/player` | патч поверх 0.1.3 | 4 | `vbook-runtime` ^0.5.0 |
+| 6 | `@animastor/assistant` | 0.3.0 | 4 | — (рантайм не импортирует: страж путей героя — своя грамматика id) |
+| 7 | `@animastor/player` | 0.1.5 (патч поверх 0.1.4) | 4 | `vbook-runtime` ^0.5.0 |
 | 8 | `@animastor/web-editor` | 0.3.0 | 5 | — |
 
 **Почему версии не 0.4.0 / 0.2.0.** Минорные `vbook-runtime` 0.4.0 и `editor` 0.4.0, а также `generation` 0.2.0 и
@@ -1031,3 +1127,13 @@ pronunciation», а рассуждающая модель без выключе�
 | В14 | Битый файл с неканоническим именем (В7, Р8) | **Маршрут шага 4**, принимает только имя из текущего `hero_issues` | §12 шаг 4 |
 | В15 | Экспорт без диктора (В8, Р7) | **Разрешён**, `narrator_missing` — предупреждение; **синтез без диктора — 409** | §10.3 |
 | В16 | Импорт v4 поверх книги 3.1 с тем же id (В9) | **409**, в теле подсказка «удалите старую книгу» (`hint: "delete_existing_book"`, `existing_book_id`) | §9; `services/vbook-import.cjs` |
+
+Решения владельца по вопросам шага 3 (18.11). Внесены в код шагом 4 (§12е).
+
+| № | Вопрос (отчёт шага 3) | Ответ 18.11 | Где |
+|---|---|---|---|
+| В17 | Голос → audio: §8.2 (`timbre`, `manner`) или правило задачи референсных голосов | **audio — только при смене закреплённого референса.** При закреплении в `reference` пишется `source_timbre_sha256`; API отдаёт `voice.reference_outdated`, если текущий `timbre` другой. Без автозапуска | §5.1, §5.2, §8.2 |
+| В18 | Резолвер в реестр инвалидации передаёт хост | **Принято** | §4a.5 |
+| В19 | Нечёткое сопоставление id участника в картинках | **Убрать в image и video**, только точный id; неизвестный id участника — предупреждение валидации книги; эталонные тесты шага 3 обновить с перечнем различий | §10.3, §12д, §12е |
+| В20 | Возможные дубликаты (журнал 2б) | **В `GET /book` как неблокирующие предупреждения** — выбрано `hero_issues` с `blocking: false`, код `possible_duplicate` (ADR §10.3 уже держит предупреждения там) | §10.3, §12е |
+

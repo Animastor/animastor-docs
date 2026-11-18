@@ -461,11 +461,26 @@ settings, stored, validated and returned like its other fields
 | `disable_thinking` | `false` | `true` → `"chat_template_kwargs": {"enable_thinking": false}` — chat-template switch of vLLM / NIM / SGLang (Nemotron, Qwen3, DeepSeek-R1 distills). A gateway that does not know the field may reject the request — opt-in only. |
 | `reasoning_effort` | `null` (not sent) | `"reasoning_effort": "<level>"` — OpenAI-style top-level field; levels `none`, `minimal`, `low`, `medium`, `high`. |
 
-Scope: the settings are applied by the analysis transport
-(`ai-service.callAI` — TXT import / VBook analysis). The chat assistant
-(`@animastor/assistant`, `buildChatRequestExtras`) builds its own body and does
-not read them; the connection test (`POST …/test`) does not send them either.
-The env fallback (`OPENROUTER_API_KEY`) has no such settings.
+Scope (since 2026-11-18, VBook v4 step 4): every `/chat/completions` body of a
+provider applies them through ONE helper, `ai-reasoning.js`:
+
+- the analysis transport (`ai-service.callAI` — TXT import / VBook analysis) —
+  `reasoningBodyFields`;
+- the chat assistant (`@animastor/assistant` 0.3.0) — the chat provider snapshot
+  (`provider-gateway` `chat.resolveProvider`) carries `disableThinking` /
+  `reasoningEffort`, the engine's `chatRequestExtras(input, ai)` puts them on top
+  of the model extras through the injected `withReasoning`;
+- the connection test (`POST /api/v1/settings/ai/test`,
+  `POST /api/v1/admin/system-ai/test`) — `testConnection({…, reasoning})`; the
+  settings come from the request body (`disable_thinking`, `reasoning_effort`,
+  validated like the PUT routes — 400 otherwise) or, when absent, from the
+  stored provider (`reasoningForTest`).
+
+`withReasoning`: a provider with `disable_thinking` wins over the model-specific
+Qwen switch — `enable_thinking` is dropped from the chat body, so the body never
+says "think" and "do not think" at once. The one-shot "Unsupported parameter"
+retry of the chat strips only `enable_thinking`, never the provider settings. The
+env fallback (`OPENROUTER_API_KEY`) has no such settings.
 
 **Empty answer after reasoning.** `finish_reason=length` with an empty
 `content` is reported as `The model exhausted its token limit on reasoning

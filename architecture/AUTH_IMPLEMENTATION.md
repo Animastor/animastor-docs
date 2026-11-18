@@ -79,6 +79,26 @@ request → cookie → sessions lookup (PG) → users → workspaces
   self-heal for rows created before ownership existed (never overwriting a
   concurrent/foreign workspace).
 
+## 2a. No guest is minted; anonymous writes are 401 (owner, 2026-11-18)
+
+VBook v4 step 5 (`VBOOK_FORMAT_V4.md` §12ж, §13 В22). `authContext` no longer
+provisions a guest workspace on an anonymous POST/PUT/PATCH under `/api/v1`.
+`requireIdentityForWrites`, mounted right after `authContext`, answers
+`401 {error: 'Authentication required', code: 'login_required'}` before any
+route runs to:
+
+- any anonymous request to `/api/v1/book/*` (every method, reads included);
+- any anonymous write (POST/PUT/PATCH/DELETE) under `/api/v1`, except the
+  sign-in routes `/api/v1/auth/*` and the machine surfaces with their own
+  credentials: `/api/v1/worker/*` (`wrk.*`), `/api/v1/ai-connector/*` (`llmc.*`).
+
+No row of `users` / `workspaces` / `guests` appears and no `animastor_gid`
+cookie is set. Guests minted before keep resolving until their workspace
+expires; register still converts a live guest in place. Both fronts open the
+sign-in window on 401 (web auth-sticky, Android login prompt). Tests:
+`backend/tests/no-guest-provision.test.js`, `book-input-guard.test.js`,
+`guest-workspace.test.js`.
+
 ## 3. Authorization wiring (`backend/src/backend.cjs`)
 
 Mounted before the route handlers:

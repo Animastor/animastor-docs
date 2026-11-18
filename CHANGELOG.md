@@ -6,6 +6,36 @@ All notable changes to Animastor are documented here.
 
 ## 2026-11-18
 
+### Frontend (VBook v4, шаг 5 — web; ветки `feat/vbook-v4`, не выкачено, не опубликовано)
+
+- **Карточка героя на контракте шага 4** (`animastor-web` `feat/vbook-v4`, собрана merge-коммитами из
+  `feat/hero-card`, `feat/voice-references` и `main`): вкладка «Герои» — единственное место героев, блок референса
+  голоса перенесён в карточку (`/heroes/:heroId/voice/…`), старые «Персонажи» / «Голоса» / «Поведение»,
+  `features/voices`, `api/behaviors` удалены. Загрузка образца — команда с `client_action`; статусы кандидатов и опрос
+  раз в 3 с; закреплять только `ready` + `passed`; «тембр изменён» (`reference_outdated`); битый файл по имени
+  (`/hero-files?file=`); показ `message` ошибок; `dirty_scenes`; запрет `passport: null` при обликах; 201 на создание;
+  `possible_duplicate` — жёлтая строка; `image-refs` 404 и книга без сборки — блок «недоступен».
+  `05-frontend/HERO_CARD.md` §6, §7, §10; `architecture/VBOOK_FORMAT_V4.md` §12ж.
+- **Вкладка «Сцена»:** облик участника, разовая правка `look_patch.<id>.<поле>` (`passport.*` не отправляется),
+  `unknown_participant` — блок «Проблемы книги» со ссылками на сцены. **Книга 3.1** — состояние «удалите и
+  импортируйте заново».
+- **Настройки AI-провайдера (GAP RSN-1):** «Отключить рассуждение модели» и `reasoning_effort` в `/settings/ai` и в
+  админке; `reasoning_budget_exhausted` — понятный текст со ссылкой на настройку.
+  `architecture/EXPERIMENTAL_BETA_PERSONAL_AI_PROVIDER.md` §18a.
+- **`@animastor/web-editor` 0.3.0:** только локации (схемы героев и `BehaviorAddDialog` удалены); app — через
+  `file:` до публикации.
+- **Паритет:** точный список для Android (шаг 6) — `architecture/ANDROID_WEB_PARITY.md`, «VBook v4 — шаг 5 (web) →
+  шаг 6 (Android)».
+
+### Backend (решения владельца по шагу 4; ветка `feat/vbook-v4`)
+
+- **`voice.reference_outdated` — только для `source: designed`**; у загруженного образца хэш тембра не пишется
+  (`VBOOK_FORMAT_V4.md` §5.2, §13 В21).
+- **Гость не заводится ни на каком маршруте:** анонимный запрос к `/api/v1/book/*` и анонимная запись под `/api/v1`
+  — 401 `login_required` до маршрута, без строк `users` / `workspaces` / `guests` (кроме `/auth/*` и машинных
+  поверхностей со своими ключами); ранее заведённые гости работают (`architecture/AUTH_IMPLEMENTATION.md` §2a,
+  §13 В22).
+
 ### Architecture (VBook v4, шаг 4 — API героя; ветка `feat/vbook-v4`, не выкачено)
 
 - **API героя** (`@animastor/editor` 0.5.0): `GET/POST /heroes`, `GET/PATCH/DELETE /heroes/:heroId` (белый список

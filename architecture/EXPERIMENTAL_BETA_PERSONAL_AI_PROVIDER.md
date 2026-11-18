@@ -492,8 +492,15 @@ request gives the same nothing. A JSON cut at `max_tokens` (non-empty content)
 names the cut in the parse error (`output cut at max_tokens=N,
 finish_reason=length`).
 
-**UI: later.** Neither web nor Android settings show the two fields yet — GAP
-in `architecture/ANDROID_WEB_PARITY.md` («Открытые GAP», 2026-11-17).
+**UI (web, 2026-11-18, VBook v4 step 5).** `/settings/ai` and the admin
+system-AI form show «Отключить рассуждение модели» (`disable_thinking`) and
+`reasoning_effort` («не отправлять» = `null`, `none` … `high`) with a hint when
+to turn them on; both are loaded from the provider meta and sent with the PUT
+and with the connection test (`features/ai/reasoning.tsx`). The error
+`reasoning_budget_exhausted` (by code, or by the fixed text above inside an
+analysis progress message) is shown in plain words with a link to
+`/settings/ai` — analysis rows, the VBook section of the Generator, the chat.
+Android: step 6 — GAP in `architecture/ANDROID_WEB_PARITY.md`.
 
 ---
 

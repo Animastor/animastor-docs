@@ -1,7 +1,8 @@
 # Карточка героя
 
 Статус: **web реализован** в ветке `feat/hero-card` (`animastor-web` `b80b24e`, 2026-11-12) на контракте VBook v4;
-**Android — спецификация** (§8, GAP в [`ANDROID_WEB_PARITY.md`](../architecture/ANDROID_WEB_PARITY.md)). Работает
+**Android реализован** шагом 6 (`animastor-android` `feat/vbook-v4`, 0.3.0 (13), 18.11; §8, статусы — в
+[`ANDROID_WEB_PARITY.md`](../architecture/ANDROID_WEB_PARITY.md)). Работает
 только с backend шагов 1–4 [`VBOOK_FORMAT_V4.md`](../architecture/VBOOK_FORMAT_V4.md) §12; до него не выкатывается.
 Backend шага 4 сделан 18.11 (ветка `feat/vbook-v4`, не выкачен): точный контракт маршрутов и кодов —
 `VBOOK_FORMAT_V4.md` §12е; что из него должна поправить карточка — §10.
@@ -221,6 +222,16 @@ Backend шага 4 сделан 18.11 (ветка `feat/vbook-v4`, не выка
 
 Экран повторяет web; отличия только платформенные.
 
+**Сделано шагом 6 (18.11, `animastor-android` `feat/vbook-v4`):** `repository/HeroModel.kt` (один в один с
+`heroModel.ts`, тесты `HeroModelTest` 28 и `HeroLooksTest` 17 на тех же фикстурах), `repository/HeroApi.kt` (все
+маршруты `VBOOK_FORMAT_V4.md` §12е, `HeroApiTest` 11 на MockWebServer), `repository/SceneLooks.kt`, `ui/heroes/*`,
+`EditFragment` (вкладка «Герои», «Сцена» с обликами и `look_patch`, книга 3.1). Отличия от буквы этого раздела,
+принятые как платформенные: сетка — `LinearLayout` по 2 плитки в строке (героев в книге десятки, не тысячи), карточка
+— полноэкранный диалог поверх редактора, а не `HeroFragment` (системная «назад» и диалог несохранённых правок — как
+описано); `BookData.heroes` / `hero_issues` хранятся сырым JSON и разбираются по одной записи
+(`HeroModel.orderHeroes` / `parseIssues`) — одна странная запись не ломает разбор книги, как фильтры web. Все
+запросы карточки — через `HeroCardController` (тест «только по явному действию»).
+
 - `EditFragment`: вкладки «Персонажи», «Голоса», «Поведение» → одна «Герои» (те же 7 вкладок и ключи строк).
 - Сетка — `RecyclerView` + `GridLayoutManager` (2 колонки, 4 на планшете); карточка — отдельный `HeroFragment`
   поверх редактора (системная «назад» = «‹ К героям», тот же диалог несохранённых правок).
@@ -290,5 +301,6 @@ Backend шага 4 сделан 18.11 (ветка `feat/vbook-v4`, не выка
 7. **`PATCH passport: null`** у героя с обликами — 400 `invalid_character`: сначала удалить облики (карточка может
    спрашивать об этом в диалоге «Убрать внешность»).
 8. **`POST /heroes`** отвечает 201 (не 200).
-9. Android (шаг 6) — те же пункты в `HeroModel.kt` / `BackendApi.kt`.
+9. Android (шаг 6) — те же пункты в `HeroModel.kt` / `HeroApi.kt`. **Сделано 18.11** (`animastor-android`
+   `feat/vbook-v4` `c84998f`, `8085e7e`; статусы по пунктам — `ANDROID_WEB_PARITY.md`).
 

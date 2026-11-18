@@ -500,7 +500,28 @@ and with the connection test (`features/ai/reasoning.tsx`). The error
 `reasoning_budget_exhausted` (by code, or by the fixed text above inside an
 analysis progress message) is shown in plain words with a link to
 `/settings/ai` — analysis rows, the VBook section of the Generator, the chat.
-Android: step 6 — GAP in `architecture/ANDROID_WEB_PARITY.md`.
+
+**Who can fix it (owner, 2026-11-18, VBook v4 step 6).** The error names the
+provider that answered: `err.providerSource` = `system` (the system provider
+or the operator env fallback `global`) or `personal` (the workspace provider:
+`/settings/ai`, a shared endpoint or a Local AI connector in it). The text ends
+with a fixed mark — `Provider: system. Ask the administrator to disable
+thinking (disable_thinking) or lower reasoning_effort of the system AI
+provider.` / `Provider: personal. Disable thinking in your AI provider settings
+(disable_thinking) or lower reasoning_effort.` — because the progress text is
+the one channel every front reads (session `progress_msg`, analysis rows). The
+bootstrap 400 body adds `code: reasoning_budget_exhausted` and
+`provider_source`; the error progress event adds `error_code` and
+`provider_source`. Fronts: `personal` (and an older backend without the mark) →
+the text with a link to the provider settings; `system` → «обратитесь к
+администратору», an administrator (`/auth/me` `is_admin`) gets a link to the
+admin panel (web `/admin`; Android has no admin panel).
+
+**Android (VBook v4 step 6).** Settings → AI provider shows the same two
+controls with the same hints (`reasoning_*` string keys), sends them with the
+PUT and the connection test (`reasoning_effort: null` is sent — «do not send»);
+the budget error in analysis rows and the VBook stage line follows the provider
+(`ui/ReasoningSettings.kt`, `ReasoningSettingsTest`).
 
 ---
 

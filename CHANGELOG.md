@@ -6,6 +6,42 @@ All notable changes to Animastor are documented here.
 
 ## 2026-11-18
 
+### Android (VBook v4, шаг 6; ветка `feat/vbook-v4`, 0.3.0 (13), APK не выложен)
+
+- **«Герои» вместо «Персонажи» / «Голоса» / «Поведение»:** сетка и карточка героя (личность, внешность, облики с
+  назначением на главы и сцены, голос с блоком референса — статусы кандидатов, опрос раз в 3 с, закрепление только
+  `ready` + `passed`, «тембр изменён», загрузка своего образца с `client_action`; привычки с выключателями правил;
+  референс-картинки деградируют на 404 до шага 7), `dirty_scenes`, `possible_duplicate`, битый файл по id или по имени.
+  `repository/HeroModel.kt` один в один с web `heroModel.ts` (те же фикстуры), `repository/HeroApi.kt` — все маршруты
+  `VBOOK_FORMAT_V4.md` §12е (запросы сверены MockWebServer-тестом). Модели и маршруты 3.1 удалены.
+- **Вкладка «Сцена»:** облик участника (`POST /looks/assign`), разовая правка `look_patch` вместо `scene.passport`,
+  «Проблемы книги» (`unknown_participant`) со ссылками на сцены. **Книга 3.1** — «удалите и импортируйте заново».
+- **Личный AI-провайдер:** «Отключить рассуждение модели» и `reasoning_effort` (RSN-1); `reasoning_budget_exhausted`
+  — текст по провайдеру. Профиль промптов — только для чтения не-админу. Старая гостевая cookie `animastor_gid`
+  удаляется. Генерация и запись — только по явному действию (тест). `testDebugUnitTest` 340/0, `apk-build.sh release`
+  OK. Статусы 17 пунктов — `architecture/ANDROID_WEB_PARITY.md`; `05-frontend/HERO_CARD.md` §8.
+
+### Backend (решения владельца по шагу 5; ветка `feat/vbook-v4`)
+
+- **Запись `/api/v1/connectors` — только админ платформы** (коннекторы и глобальный профиль промптов — системные
+  данные); `GET /auth/me` отдаёт `user.is_admin`. Аудит всех маршрутов записи под `/api/v1` — других пробелов нет
+  (`architecture/AUTH_IMPLEMENTATION.md` §2b, `VBOOK_FORMAT_V4.md` §13 В23).
+- **`REDIS_HOST` / `REDIS_PORT` / `PG_HOST` — только из env**, без значения backend не стартует (`[FATAL]`), коротких
+  имён по умолчанию нет; `docker-compose` и CI задают значения явно. Причина — wildcard search-домен хостера в
+  `/etc/resolv.conf` VPS (`architecture/EXPERIMENTAL_BETA_DOCKER_DEPLOYMENT.md`, §13 В24).
+- **`reasoning_budget_exhausted` называет провайдера** (`Provider: system|personal.` в тексте, `provider_source` в
+  теле 400 и событии прогресса): системный — «обратитесь к администратору», личный — `/settings/ai`
+  (`architecture/EXPERIMENTAL_BETA_PERSONAL_AI_PROVIDER.md` §18a, §13 В25).
+
+### Frontend (web, правки шага 6)
+
+- Уведомление `reasoning_budget_exhausted` — по провайдеру (админу — ссылка на `/admin`); селектор профиля промптов
+  в `/settings/worker` — только для чтения не-админу; `isAdminUser` по `is_admin`.
+
+### Deploy (ветка `animastor-deploy` `feat/vbook-v4-infra-hosts`)
+
+- `docker-compose.yml`: backend получает `REDIS_HOST=redis`, `REDIS_PORT=6379` явно (вливать вместе с релизом backend).
+
 ### Frontend (VBook v4, шаг 5 — web; ветки `feat/vbook-v4`, не выкачено, не опубликовано)
 
 - **Карточка героя на контракте шага 4** (`animastor-web` `feat/vbook-v4`, собрана merge-коммитами из

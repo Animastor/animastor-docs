@@ -1133,6 +1133,39 @@ pronunciation», а рассуждающая модель без выключе�
 Паритет и точный список для Android (шаг 6) — `architecture/ANDROID_WEB_PARITY.md`, «VBook v4 — шаг 5 (web) →
 шаг 6 (Android)».
 
+### 12з. Шаг 6 — Android и решения владельца по шагу 5 (18.11)
+
+Ветки `feat/vbook-v4`: `animastor-android` (от `main` `1c9b09b` + merge `feat/voice-references` `09d263d`, без
+rebase), правки `animastor-backend` и `animastor-web`; `animastor-deploy` — ветка `feat/vbook-v4-infra-hosts`. Не
+выкачено, APK не выложен; отчёт `reports/2026-11-18/vbook-v4-step6.md` на сервере.
+
+**Backend (§13 В23–В25):**
+
+- **`/api/v1/connectors` — запись только админу платформы** (`connectorWriteGuard` → `requireAdmin`; аноним 401,
+  не-админ 403 `admin_required`); чтение — любой личности. Коннекторы — системные данные (файлы `ai/connectors/` и
+  один глобальный профиль промптов в Redis), workspace у них нет. `GET /auth/me` отдаёт `user.is_admin` (роль или
+  `ADMIN_USERNAMES`). Аудит всех маршрутов записи под `/api/v1` — `AUTH_IMPLEMENTATION.md` §2b; других пробелов нет.
+- **Хосты инфраструктуры — только из env:** `REDIS_HOST`, `REDIS_PORT`, `PG_HOST` обязательны
+  (`backend/src/config/infra-env.js`); без значения — одна строка `[FATAL]` и выход до любого подключения, а не
+  `'redis'` / `'localhost'` по умолчанию. `docker-compose.yml` backend-репо, CI-smoke и `animastor-deploy` задают их
+  явно. Причина: в `/etc/resolv.conf` VPS — `search webhostbox.com`, и у этого домена wildcard: на хосте любое
+  короткое имя (`redis`, `postgres`, `gpu-hub`, `animastor-redis`, …) резолвится в чужие 64.190.63.x; контейнеры
+  наследуют тот же search-домен (`ndots:0`), так что при отсутствии сервиса в docker-сети имя тоже уйдёт наружу.
+  Сам резолвер не менялся.
+- **`reasoning_budget_exhausted` называет провайдера:** `system` (системный или env-фолбэк) → «обратитесь к
+  администратору», админу — ссылка на админку; `personal` → `/settings/ai`
+  (`EXPERIMENTAL_BETA_PERSONAL_AI_PROVIDER.md` §18a).
+
+**Web:** уведомление об исчерпанном бюджете рассуждения — по провайдеру; селектор профиля промптов в
+`/settings/worker` — только для админа (остальным — только чтение с подсказкой); `isAdminUser` — по `is_admin`.
+
+**Android 0.3.0 (13)** — все 17 пунктов списка шага 5 (`ANDROID_WEB_PARITY.md`, статусы там): вкладка «Герои» и
+карточка (`repository/HeroModel.kt` — один в один с `heroModel.ts`, те же фикстуры; `repository/HeroApi.kt` — все
+маршруты §12е, тела с `null`; `ui/heroes/*`), вкладка «Сцена» (облик участника, `look_patch`, «Проблемы книги»),
+книга 3.1, настройки рассуждения в личном провайдере, без гостевой cookie. Генерация и запись — только по явному
+действию: все запросы карточки идут через `HeroCardController` (тест). Живой прогон клиента без устройства невозможен —
+запросы Retrofit сверены с таблицей §12е через MockWebServer (`HeroApiTest`).
+
 ---
 
 ## 13. Вопросы владельцу и ответы
@@ -1180,3 +1213,11 @@ pronunciation», а рассуждающая модель без выключе�
 |---|---|---|---|
 | В21 | `source_timbre_sha256` и для загруженного образца? | **`reference_outdated` — только для `source: designed`** (`isReferenceOutdated`); у загруженного хэш не пишется | §5.2; `voice.js`, `voice-routes.js` |
 | В22 | Анонимная запись получает 403 от свежего гостя | **401 без создания гостя**: анонимный запрос к `/api/v1/book/*` и прочим маршрутам записи; гость не заводится ни на каком маршруте | `AUTH_IMPLEMENTATION.md` §2a; `auth-context.js` |
+
+Решения владельца по вопросам шага 5 (18.11). Внесены в код шагом 6 (§12з).
+
+| № | Вопрос (отчёт шага 5) | Ответ 18.11 | Где |
+|---|---|---|---|
+| В23 | Запись `/api/v1/connectors` без проверки роли | **Только админ платформы** (коннекторы — системные, workspace у них нет); аудит всех маршрутов записи — других пробелов нет | `AUTH_IMPLEMENTATION.md` §2b; `connector-routes.cjs` |
+| В24 | Хост Redis `'redis'` зашит в `backend.cjs` | **`REDIS_HOST` / `REDIS_PORT` / `PG_HOST` из env, без значения — ошибка старта**; в `docker-compose` — явные значения; `/etc/resolv.conf` VPS только описан | `config/infra-env.js`; `EXPERIMENTAL_BETA_DOCKER_DEPLOYMENT.md` |
+| В25 | Ссылка `reasoning_budget_exhausted` ведёт в личные настройки, а книга может быть на системном провайдере | **По провайдеру:** системный — «обратитесь к администратору» (админу — ссылка на админку), личный — `/settings/ai`; backend отдаёт, какой провайдер ответил | `EXPERIMENTAL_BETA_PERSONAL_AI_PROVIDER.md` §18a |

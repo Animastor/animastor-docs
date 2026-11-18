@@ -85,6 +85,7 @@ docker compose up -d
 |----------|-------------|
 | `POSTGRES_PASSWORD` | PostgreSQL password (used by postgres + backend) |
 | `WORKSPACE_SECRET_KEY` | AES-256-GCM key for encrypting per-workspace API keys (32+ random chars) |
+| `REDIS_HOST`, `REDIS_PORT`, `PG_HOST` | Backend infrastructure hosts. **No defaults** since VBook v4 step 6 (`backend/src/config/infra-env.js`): a missing value stops the start with one `[FATAL]` line naming every missing variable. `docker-compose.yml` sets the service names (`redis`, `6379`, `postgres`); the test stack takes them from `backend/.env.test`. Reason: the VPS resolver has `search webhostbox.com` with a wildcard, so a bare short name resolves to a foreign machine on the host — and inside a container whose service is absent from the network (`VBOOK_FORMAT_V4.md` §12з). |
 
 ### Optional (with defaults)
 

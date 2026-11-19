@@ -1221,3 +1221,13 @@ rebase), правки `animastor-backend` и `animastor-web`; `animastor-deploy`
 | В23 | Запись `/api/v1/connectors` без проверки роли | **Только админ платформы** (коннекторы — системные, workspace у них нет); аудит всех маршрутов записи — других пробелов нет | `AUTH_IMPLEMENTATION.md` §2b; `connector-routes.cjs` |
 | В24 | Хост Redis `'redis'` зашит в `backend.cjs` | **`REDIS_HOST` / `REDIS_PORT` / `PG_HOST` из env, без значения — ошибка старта**; в `docker-compose` — явные значения; `/etc/resolv.conf` VPS только описан | `config/infra-env.js`; `EXPERIMENTAL_BETA_DOCKER_DEPLOYMENT.md` |
 | В25 | Ссылка `reasoning_budget_exhausted` ведёт в личные настройки, а книга может быть на системном провайдере | **По провайдеру:** системный — «обратитесь к администратору» (админу — ссылка на админку), личный — `/settings/ai`; backend отдаёт, какой провайдер ответил | `EXPERIMENTAL_BETA_PERSONAL_AI_PROVIDER.md` §18a |
+
+Решения владельца по вопросам шага 6 (19.11, релиз VBook v4).
+
+| № | Вопрос (отчёт шага 6, §6) | Ответ 19.11 | Где |
+|---|---|---|---|
+| В26 | Search-домен хостера (`search webhostbox.com`, wildcard) — короткое имя отсутствующего сервиса уходит на чужую машину | **`dns_search: .` у всех сервисов прод-compose**; правка хоста — владелец сам, по инструкции | `animastor-deploy` `docker-compose.yml`; `EXPERIMENTAL_BETA_DOCKER_DEPLOYMENT.md` |
+| В27 | gpu-hub по умолчанию берёт `animastor-redis` / `animastor-backend` | **Без значений по умолчанию:** `REDIS_URL`, `BACKEND_URL` обязательны, иначе `[FATAL]` и выход | `animastor-gpu-hub` v0.3.5 `server.js`, `gpu-hub.js` |
+| В28 | Промежуточные версии пакетов задачи референсов (0.4.0 и др.) | **Только финальные версии v4**; промежуточные не публикуются. В состав добавлен `animastor-comfyui-workflow-connector` 0.2.0 (зависимость `generation` 0.3.0) | §12, таблица публикации |
+| В29 | Обязательное обновление APK | **Нет:** новая версия на сайте (`version.json` 0.3.0 / 13), без принудительного обновления. APK ≤ 0.2.10 с backend v4 вкладки персонажей не покажет — проверка версии в приложении — отдельная задача | `ANDROID_WEB_PARITY.md` |
+| В30 | Книги 3.1 в проде | **Бэкап, затем удаление штатным `DELETE /book/:id`** после выкатки — по отдельному подтверждению владельца | §9; отчёт релиза |

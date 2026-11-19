@@ -6,6 +6,18 @@ All notable changes to Animastor are documented here.
 
 ## 2026-11-19
 
+### Release — VBook v4 выкачен
+
+- **Прод:** backend `deploy-045328c` (`sha256:eba13ade…`), gpu-hub `v0.3.5` (`sha256:55659364…`), deploy `fe8b833`;
+  web `38fc8e3` (`app.animastor.org`); APK **0.3.0 (13)** на сайте без принудительного обновления (§13 В29).
+  Записи 12.11–18.11 с пометками «не выкачено» / «APK не выложен» этим релизом закрыты.
+- **Пакеты npm (финальные, §13 В28):** `vbook-runtime` 0.5.0, `ai-analysis` 0.2.0, `editor` 0.5.0, `player` 0.1.5,
+  `generation` 0.3.0, `orchestration` 1.4.1, `assistant` 0.3.0, `installer` 0.2.11, `web-editor` 0.3.0,
+  `animastor-comfyui-workflow-connector` 0.2.0.
+- **Worker:** нода `SaveAudioAnimastorReference` (`comfyui-nodes/animastor-voice-ref`) в main `8745ca9`; хаб отдаёт
+  installer 0.2.11 с манифестом `qwen-tts.json` (`custom-node:animastor-voice-ref` @ `6a88ad9`).
+- Решения владельца по шагу 6 — `architecture/VBOOK_FORMAT_V4.md` §13 В26–В30.
+
 ### Deployment / infra (релиз VBook v4)
 
 - **gpu-hub v0.3.5 — без хостов по умолчанию** (решение владельца по вопросу 2 шага 6): `REDIS_URL` и `BACKEND_URL`

@@ -4,6 +4,21 @@ All notable changes to Animastor are documented here.
 
 ---
 
+## 2026-11-19
+
+### Deployment / infra (релиз VBook v4)
+
+- **gpu-hub v0.3.5 — без хостов по умолчанию** (решение владельца по вопросу 2 шага 6): `REDIS_URL` и `BACKEND_URL`
+  обязательны, без них — одна строка `[FATAL]` и выход 1 до подключения к Redis; прод-compose задаёт `BACKEND_URL`
+  явно (раньше работал на значении по умолчанию). `architecture/EXPERIMENTAL_BETA_DOCKER_DEPLOYMENT.md`.
+- **`dns_search: .` у всех сервисов прод-compose** (решение владельца по вопросу 1): контейнер не наследует
+  `search webhostbox.com` хоста; короткое имя отсутствующего сервиса больше не уходит на чужую машину. Хост не менялся
+  — инструкция владельцу в отчёте релиза.
+- **Пакеты:** в состав релиза добавлен `animastor-comfyui-workflow-connector` 0.2.0 (от него зависит
+  `@animastor/generation` 0.3.0; в плане публикации его не было). Backend и web берут пакеты v4 из реестра вместо `file:`.
+
+---
+
 ## 2026-11-18
 
 ### Android (VBook v4, шаг 6; ветка `feat/vbook-v4`, 0.3.0 (13), APK не выложен)

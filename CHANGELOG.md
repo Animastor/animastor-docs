@@ -211,6 +211,21 @@ All notable changes to Animastor are documented here.
 - **V100 и torch** (`architecture/VOICE_REFERENCES.md` §10, ветка `feat/voice-references`): аудио-нода на sm_70 —
   torch не выше 2.10 для cu128; PyTorch 2.11 убрал Volta из cu128/cu129, остаётся cu126.
 
+### Changed (backend + vbook-runtime; не выкачено)
+
+- **Усилена проверка входных данных импорта.** `@animastor/vbook-runtime` **0.2.1** (прод-линия), 0.3.1
+  (`feat/behaviour-p0`), в составе 0.4.0 (`feat/voice-references`); backend — общая проверка идентификаторов в запросах,
+  лимиты загрузки. `.vbook` принимается в составе формата 3.1. Профиль — `architecture/AUTH_IMPLEMENTATION.md` §2–3, §5.
+- **Изменение поведения:** импорт (`/book/import`, `import-txt`, `import-text`, `load-vbook`, `/generate`) и выгрузка
+  книги (`download`, `storyboard`, `audio`, `export`) — только для вошедшего пользователя (гость и аноним — 401
+  `login_required`); запросы без идентичности к данным книг — 401, список книг — пустой; `/api/v1/debug/*` — только
+  администратор.
+- **Web + Android (паритет):** любой 401 вне `/auth/*` один раз открывает окно входа; ошибка импорта —
+  «Импорт и скачивание книг доступны после входа в аккаунт». Web `071d6eb`, Android 0.2.9 (11) `31263b3`.
+- Удаление книги и очистка кэша затрагивают только файлы этой книги в каталоге результатов.
+- Тесты backend больше не обращаются к внешним сервисам.
+
+
 ---
 
 ## 2026-11-12
@@ -258,7 +273,7 @@ All notable changes to Animastor are documented here.
 
 ## 2026-11-10
 
-### Feature (поведения героев, фаза 0; ветки `feat/behaviour-p0`, не влито, не выкачено)
+### Feature (поведения героев, фаза 0; ветка `feat/behaviour-p0` влита в main 13.11, не выкачено)
 
 - **Поведения героев — детерминированное применение к видео** (`architecture/VBOOK_BEHAVIOUR.md`; основа — разведка
   `architecture/VBOOK_BEHAVIOUR_RECON.md`, вариант C, влита в main 10.11).
@@ -421,6 +436,13 @@ All notable changes to Animastor are documented here.
 ---
 
 ## 2026-11-06
+
+### Fixed (web-auth sticky; влито в main 13.11, не выкачено)
+
+- **«Залипание» аккаунта между `app.` и `admin.` (web-auth sticky).** Ветки `fix/auth-sticky` в `animastor-backend`, `animastor-web` и `animastor-docs` влиты в main 13.11 merge-коммитами (без force-push), не выкачено. Причина — старые host-only cookie `animastor_sid`/`animastor_gid` (до `COOKIE_DOMAIN`), которые `Set-Cookie` с `Domain=` не удаляет; чтение только первой cookie из заголовка; кэширование `/auth/me` и `/api/v1/books` браузером.
+  - **backend:** login/logout дополнительно шлют host-only очистку `animastor_sid`/`animastor_gid` (`Max-Age=0`, без `Domain=`, только при заданном `COOKIE_DOMAIN`); `authContext` перебирает все дубли cookie и берёт первую живую (неревокированную) сессию, один warning `duplicate session cookies` на запрос; `Cache-Control: no-store` на `/api/v1/auth/*` и `/api/v1/books`.
+  - **`@animastor/auth`:** `parseCookieHeaders` и `clearHostOnlyCookieHeaders` в cookie-грамматике, версия 0.1.1. Пакет публикуется до сборки образа — backend вызывает новые методы.
+  - **web:** `fetchMe()` читает `/auth/me` с `cache: 'no-store'`; `logout()` ждёт `fetchMe()` вместо только локального сброса. Admin использует тот же store — отдельных правок не требует.
 
 ### Fix
 

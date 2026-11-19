@@ -96,6 +96,67 @@ request → cookie → sessions lookup (PG) → users → workspaces
   self-heal for rows created before ownership existed (never overwriting a
   concurrent/foreign workspace).
 
+## 2a. No guest is minted; anonymous writes are 401 (owner, 2026-11-18)
+
+VBook v4 step 5 (`VBOOK_FORMAT_V4.md` §12ж, §13 В22). `authContext` no longer
+provisions a guest workspace on an anonymous POST/PUT/PATCH under `/api/v1`.
+`requireIdentityForWrites`, mounted right after `authContext`, answers
+`401 {error: 'Authentication required', code: 'login_required'}` before any
+route runs to:
+
+- any anonymous request to `/api/v1/book/*` (every method, reads included);
+- any anonymous write (POST/PUT/PATCH/DELETE) under `/api/v1`, except the
+  sign-in routes `/api/v1/auth/*` and the machine surfaces with their own
+  credentials: `/api/v1/worker/*` (`wrk.*`), `/api/v1/ai-connector/*` (`llmc.*`).
+
+No row of `users` / `workspaces` / `guests` appears and no `animastor_gid`
+cookie is set. Guests minted before keep resolving until their workspace
+expires; register still converts a live guest in place. Both fronts open the
+sign-in window on 401 (web auth-sticky, Android login prompt). Tests:
+`backend/tests/no-guest-provision.test.js`, `book-input-guard.test.js`,
+`guest-workspace.test.js`.
+
+## 2b. Admin-only system writes; the write-route audit (owner, 2026-11-18)
+
+VBook v4 step 6 (`VBOOK_FORMAT_V4.md` §12з, §13 В23). `/api/v1/connectors/*`
+is system data — the files of `ai/connectors/` (add, parameters, status,
+bindings, reload) and the ONE global prompt-profile override in Redis
+(`PUT /connectors/profiles`); no workspace owns it and every book of every
+user is assembled with it. Every non-GET method there goes through
+`requireAdmin` (`connectorWriteGuard`, mounted before the routes): anonymous
+→ 401, a signed-in non-admin → 403 `admin_required`. Reads stay open to any
+identity (the settings screen shows the active profile; web and Android show
+the selector read-only to non-admins).
+
+`isAdminUser(user)` is the one admin predicate (`role = 'admin'` OR the
+`ADMIN_USERNAMES` allowlist); `GET /api/v1/auth/me` reports it as
+`user.is_admin`. Workspace roles: `workspace_members.role` has
+`owner` / `editor` / `viewer` in the schema, but only `owner` rows are ever
+created (personal workspaces), so book access = membership = ownership; no
+write needs a role split today.
+
+Audit of every write route under `/api/v1` (the live Express stack of
+`backend.cjs`, 18.11; tests: `step6-write-guards.test.js`,
+`no-guest-provision.test.js`):
+
+| Routes | Identity | Role / ownership |
+|---|---|---|
+| `/auth/register`, `/auth/login`, `/auth/logout` | none (sign-in itself) | rate limits on login / register |
+| `/book/:bookId/*` (editor, heroes, looks, rules, behaviour, voice candidates / reference, generation commands, cache, snapshot, lazy-parse, cancel) | 401 before the route | `requireBookAccess` — member of the book's workspace; 410 expired guest; 409 for a 3.1 book after the access check |
+| `/book/import`, `/import-txt`, `/import-text`, `/load-vbook` | `requireUser` (registered user) | cross-workspace guard of the importer |
+| `/book/blank` | 401 before the route (`requireIdentityForWrites`) | the book is attached to `req.workspace` |
+| `/scene/:bookId/…/timings` | 401 | `requireBookAccess` |
+| `/generate` | `requireUser` | importer cross-workspace guard |
+| `/ai/sessions*`, `/ai/chat*` | 401 (`aiBookGuard`) | the book of the session / body must be in the caller's workspace; mismatch → 400 |
+| `/settings/ai/provider` (PUT/DELETE), `/settings/ai/test` | identity | own workspace only (`req.workspace`) |
+| `/ai-endpoints*`, `/ai-connector/registrations` and `/connectors/:id/*`, `/workers*`, `/private-worker/setup/plan` | registered user (guest → 403) | own workspace only; foreign id → 404 |
+| `/workers/:id/request-log` | registered user | workspace owner or platform admin |
+| `/admin/*`, `/debug/*` | `requireAdmin` | platform admin |
+| `/connectors/*` (writes) | `requireAdmin` | platform admin (**fixed 18.11** — was open to anyone) |
+| `/worker/verify` | worker token `wrk.*` | — |
+| `/internal/gen/*`, `/internal/workers/:id/logs` | hub key / per-job upload token | — |
+| `/gpu/task/result`, `/gpu/task/error` | hub callback auth | the task's workspace is re-checked |
+
 ## 3. Authorization wiring (`backend/src/backend.cjs`)
 
 Mounted before the route handlers:

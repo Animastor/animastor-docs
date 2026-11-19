@@ -85,6 +85,19 @@ docker compose up -d
 |----------|-------------|
 | `POSTGRES_PASSWORD` | PostgreSQL password (used by postgres + backend) |
 | `WORKSPACE_SECRET_KEY` | AES-256-GCM key for encrypting per-workspace API keys (32+ random chars) |
+| `REDIS_HOST`, `REDIS_PORT`, `PG_HOST` | Backend infrastructure hosts. **No defaults** since VBook v4 step 6 (`backend/src/config/infra-env.js`): a missing value stops the start with one `[FATAL]` line naming every missing variable. `docker-compose.yml` sets the service names (`redis`, `6379`, `postgres`); the test stack takes them from `backend/.env.test`. Reason: the VPS resolver has `search webhostbox.com` with a wildcard, so a bare short name resolves to a foreign machine on the host — and inside a container whose service is absent from the network (`VBOOK_FORMAT_V4.md` §12з). |
+| `REDIS_URL`, `BACKEND_URL` (gpu-hub) | GPU hub infrastructure endpoints. **No defaults** since hub v0.3.5 (owner decision, VBook v4 step 6 Q2): the `redis://animastor-redis:6379` / `http://animastor-backend:3000` fallbacks are removed; a missing value prints one `[FATAL] REDIS_URL is not set; BACKEND_URL is not set — …` line and exits 1 before Redis is touched. Prod compose sets both explicitly (`BACKEND_URL` was previously taken from the default). |
+
+### DNS search domain (`dns_search: .`)
+
+Every service in the prod `docker-compose.yml` (animastor-deploy) has `dns_search: .` — no search domain in the
+container's `/etc/resolv.conf`. Without it the container inherits the host's `search webhostbox.com` (hoster wildcard
+DNS) and glibc resolves a short name of an absent service to a foreign machine: reproduced 2026-11-19 on a throwaway
+compose project, `redis` stopped, Debian container → `getent hosts redis` = `64.190.63.222 redis.webhostbox.com`; with
+`dns_search: .` → nothing. The backend image is Debian (glibc), so this is real for it; musl (alpine) did not leak in the
+same test. The setting takes effect when a container is (re)created — pg / redis / proxy pick it up only at their next
+planned recreation. Removing the search domain on the host itself is a separate root task for the owner (netplan /
+static `/etc/resolv.conf` / DHCP `use-domains: false`; see `reports/2026-11-19/vbook-v4-release.md` §5).
 
 ### Optional (with defaults)
 

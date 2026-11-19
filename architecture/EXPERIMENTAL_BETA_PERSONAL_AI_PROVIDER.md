@@ -91,10 +91,15 @@ schema):
 | `enabled`          | BOOLEAN   | Disabled provider degrades to global env fallback (legacy chat path). |
 | `status`           | TEXT      | `untested` \| `ok` \| `failed`. CHECK-constrained. Derived from the most recent Test Connection. |
 | `last_tested_at`   | BIGINT    | Epoch-seconds timestamp of the most recent Test Connection.          |
+| `disable_thinking` | BOOLEAN NOT NULL DEFAULT FALSE | Reasoning models: send `chat_template_kwargs: {enable_thinking: false}` (§18a). |
+| `reasoning_effort` | TEXT NULL | Reasoning models: `none` \| `minimal` \| `low` \| `medium` \| `high`; NULL = not sent (§18a). |
 | `created_at` / `updated_at` | BIGINT | Epoch-seconds.                           |
 
 Migration `PAP-1` (`backend/src/storage/postgres/schema.js`) adds the new columns
 and CHECK on existing databases; brand-new databases get them in `SCHEMA_SQL`.
+Migration `RSN-1` (2026-11-17, VBook v4 step 2b) adds `disable_thinking` /
+`reasoning_effort` to `workspace_ai_providers` **and** `system_ai_providers`
+(additive, defaults keep every provider unchanged).
 
 ---
 
@@ -156,7 +161,7 @@ backend-persisted `status` / `last_tested_at`.
 |----------|---------------------------------|-----------------------------------------------------------|-------------------------------------------------------------------|
 | `GET`    | `/api/v1/settings/ai/provider`  | —                                                          | `{ provider, has_workspace_provider }` — `provider` is null or meta (NO key). |
 | `GET`    | `/api/v1/settings/ai/providers`  | spec §7 list parity (singleton array)                     | `{ providers: [meta] \| [] }`.                                     |
-| `PUT`    | `/api/v1/settings/ai/provider`   | `{ provider_type?, endpoint, api_key?, model?, enabled? }` | `{ provider: meta }` — back-compat `provider` body field accepted as alias of `provider_type`. |
+| `PUT`    | `/api/v1/settings/ai/provider`   | `{ provider_type?, endpoint, api_key?, model?, enabled?, disable_thinking?, reasoning_effort? }` | `{ provider: meta }` — back-compat `provider` body field accepted as alias of `provider_type`. `disable_thinking` must be a boolean, `reasoning_effort` null or a level of §18a — otherwise 400; omitted → the stored value is kept. |
 | `DELETE` | `/api/v1/settings/ai/provider`  | —                                                          | `{ deleted, has_workspace_provider: false }`.                       |
 | `POST`   | `/api/v1/settings/ai/test`       | `{ endpoint?, api_key?, model? }` — empty body re-tests the saved snapshot with its own endpoint+key+model | `{ ok, model?, status?, error? }` — never `apiKey`. Also stamps `status` + `last_tested_at` on the row. |
 
@@ -180,6 +185,8 @@ authoritative. Cross-workspace access is refused; foreign book access is refused
   "api_key_masked": "••••last",
   "status": "ok",
   "last_tested_at": 1787288464,
+  "disable_thinking": false,
+  "reasoning_effort": null,
   "created_at": ...,
   "updated_at": ...
 }
@@ -432,6 +439,89 @@ backoff on 5xx and network errors, and re-throws 4xx immediately — no
 infinite retry loops). The TXT/agent paths surface a clear `Error` and
 session failure marker so the user gets a meaningful "AI analysis failed"
 message in the import progress UI.
+
+---
+
+## 18a. Reasoning models — `disable_thinking` / `reasoning_effort` (2026-11-17)
+
+Reasoning ("thinking") models count their reasoning against `max_tokens`. With
+the analysis budgets (2–16k) such a model can spend the whole budget on
+reasoning and return an empty `content` with `finish_reason=length` (acceptance
+2.6 of VBook v4: `nvidia/nemotron-3.5-super-vl-120b-a12b` on NVIDIA API, 4096 of
+4096 tokens reasoning — `reports/2026-11-17/vbook-v4-acceptance-2.6.md`).
+
+A provider — workspace (`workspace_ai_providers`) or system
+(`system_ai_providers`, admin `PUT /api/v1/admin/system-ai`, body
+`provider.disable_thinking` / `provider.reasoning_effort`) — carries two optional
+settings, stored, validated and returned like its other fields
+(`backend/src/services/ai-reasoning.js`):
+
+| Setting | Default | Sent in the `/chat/completions` body |
+|---|---|---|
+| `disable_thinking` | `false` | `true` → `"chat_template_kwargs": {"enable_thinking": false}` — chat-template switch of vLLM / NIM / SGLang (Nemotron, Qwen3, DeepSeek-R1 distills). A gateway that does not know the field may reject the request — opt-in only. |
+| `reasoning_effort` | `null` (not sent) | `"reasoning_effort": "<level>"` — OpenAI-style top-level field; levels `none`, `minimal`, `low`, `medium`, `high`. |
+
+Scope (since 2026-11-18, VBook v4 step 4): every `/chat/completions` body of a
+provider applies them through ONE helper, `ai-reasoning.js`:
+
+- the analysis transport (`ai-service.callAI` — TXT import / VBook analysis) —
+  `reasoningBodyFields`;
+- the chat assistant (`@animastor/assistant` 0.3.0) — the chat provider snapshot
+  (`provider-gateway` `chat.resolveProvider`) carries `disableThinking` /
+  `reasoningEffort`, the engine's `chatRequestExtras(input, ai)` puts them on top
+  of the model extras through the injected `withReasoning`;
+- the connection test (`POST /api/v1/settings/ai/test`,
+  `POST /api/v1/admin/system-ai/test`) — `testConnection({…, reasoning})`; the
+  settings come from the request body (`disable_thinking`, `reasoning_effort`,
+  validated like the PUT routes — 400 otherwise) or, when absent, from the
+  stored provider (`reasoningForTest`).
+
+`withReasoning`: a provider with `disable_thinking` wins over the model-specific
+Qwen switch — `enable_thinking` is dropped from the chat body, so the body never
+says "think" and "do not think" at once. The one-shot "Unsupported parameter"
+retry of the chat strips only `enable_thinking`, never the provider settings. The
+env fallback (`OPENROUTER_API_KEY`) has no such settings.
+
+**Empty answer after reasoning.** `finish_reason=length` with an empty
+`content` is reported as `The model exhausted its token limit on reasoning
+(finish_reason=length, empty content, max_tokens=…, reasoning_tokens=…). Disable
+thinking in the AI provider settings (disable_thinking) or lower
+reasoning_effort.` (`code: reasoning_budget_exhausted`). The error is **not
+retried** — neither by `ai-service` nor by the agent `ai-caller`: the same
+request gives the same nothing. A JSON cut at `max_tokens` (non-empty content)
+names the cut in the parse error (`output cut at max_tokens=N,
+finish_reason=length`).
+
+**UI (web, 2026-11-18, VBook v4 step 5).** `/settings/ai` and the admin
+system-AI form show «Отключить рассуждение модели» (`disable_thinking`) and
+`reasoning_effort` («не отправлять» = `null`, `none` … `high`) with a hint when
+to turn them on; both are loaded from the provider meta and sent with the PUT
+and with the connection test (`features/ai/reasoning.tsx`). The error
+`reasoning_budget_exhausted` (by code, or by the fixed text above inside an
+analysis progress message) is shown in plain words with a link to
+`/settings/ai` — analysis rows, the VBook section of the Generator, the chat.
+
+**Who can fix it (owner, 2026-11-18, VBook v4 step 6).** The error names the
+provider that answered: `err.providerSource` = `system` (the system provider
+or the operator env fallback `global`) or `personal` (the workspace provider:
+`/settings/ai`, a shared endpoint or a Local AI connector in it). The text ends
+with a fixed mark — `Provider: system. Ask the administrator to disable
+thinking (disable_thinking) or lower reasoning_effort of the system AI
+provider.` / `Provider: personal. Disable thinking in your AI provider settings
+(disable_thinking) or lower reasoning_effort.` — because the progress text is
+the one channel every front reads (session `progress_msg`, analysis rows). The
+bootstrap 400 body adds `code: reasoning_budget_exhausted` and
+`provider_source`; the error progress event adds `error_code` and
+`provider_source`. Fronts: `personal` (and an older backend without the mark) →
+the text with a link to the provider settings; `system` → «обратитесь к
+администратору», an administrator (`/auth/me` `is_admin`) gets a link to the
+admin panel (web `/admin`; Android has no admin panel).
+
+**Android (VBook v4 step 6).** Settings → AI provider shows the same two
+controls with the same hints (`reasoning_*` string keys), sends them with the
+PUT and the connection test (`reasoning_effort: null` is sent — «do not send»);
+the budget error in analysis rows and the VBook stage line follows the provider
+(`ui/ReasoningSettings.kt`, `ReasoningSettingsTest`).
 
 ---
 

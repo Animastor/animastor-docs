@@ -414,7 +414,7 @@ system now stores:
 **Responsibility:** Authentication: register / login / logout / current-identity. Server-side sessions in PG, scrypt password hashing.
 
 **Key models:**
-- **Guest Workspace MVP:** anonymous user gets a temporary workspace (TTL 7 + grace 23 days). Cookie `animastor_gid`.
+- **Guest Workspace MVP:** guests (temporary workspace, TTL 7 + grace 23 days, cookie `animastor_gid`) minted before 2026-11-18 keep working; since then no route mints a guest — an anonymous write and any anonymous `/api/v1/book/*` request are 401 `login_required` (`architecture/AUTH_IMPLEMENTATION.md` §2a).
 - **Registered User:** username/password → session cookie `animastor_sid` (30 days). Personal workspace tied to user.
 - **Cross-subdomain sessions:** `COOKIE_DOMAIN=animastor.org` — one session for animastor.org + app.animastor.org.
 - **Guest→User conversion:** on register with live guest cookie — in-place workspace conversion.

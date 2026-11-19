@@ -54,6 +54,12 @@ async resolveCanonicalSceneImage(outputDir, buildId, bookId, chapterId, sceneId)
 - `locations.json` contains global `environment` template (time/season/lighting/weather/
   mood/atmosphere) — fallback for scenes. `scene.location.environment` overrides it per-field
   (character passport pattern); merge performed in `buildImagePrompt()` and video builder
+- **VBook 4 (step 3, branch `feat/vbook-v4`, not deployed):** the image and video builders read heroes only
+  through `resolveHeroLook(book, chapter, scene, id)` (`architecture/VBOOK_FORMAT_V4.md` §4a.5): scene look →
+  chapter look → base passport (`characters/<id>.json`), then `scene.look_patch[id]`. `resolvePassport()`,
+  `scene.passport` and `book.characters` are gone; the video builder reaches the book through the
+  `BookDataPort` (`resolveHeroLook`, `passportHeroes`); the duplicate-token fallback is `base.video_tokens`.
+  Invalidation: one derived scene key `scene.resolved_looks` (§12д). The two bullets below describe 3.1.
 - **Scene-level passport overrides** (`scene.passport[charId]`): `resolvePassport()`
   takes scene override (appearance, clothes) with highest priority over global character passport;
   uncovered fields from `characters.json`. Similarly video builder reads

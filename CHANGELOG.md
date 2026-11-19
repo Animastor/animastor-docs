@@ -4,7 +4,227 @@ All notable changes to Animastor are documented here.
 
 ---
 
+## 2026-11-19
+
+### Deployment / infra (релиз VBook v4)
+
+- **gpu-hub v0.3.5 — без хостов по умолчанию** (решение владельца по вопросу 2 шага 6): `REDIS_URL` и `BACKEND_URL`
+  обязательны, без них — одна строка `[FATAL]` и выход 1 до подключения к Redis; прод-compose задаёт `BACKEND_URL`
+  явно (раньше работал на значении по умолчанию). `architecture/EXPERIMENTAL_BETA_DOCKER_DEPLOYMENT.md`.
+- **`dns_search: .` у всех сервисов прод-compose** (решение владельца по вопросу 1): контейнер не наследует
+  `search webhostbox.com` хоста; короткое имя отсутствующего сервиса больше не уходит на чужую машину. Хост не менялся
+  — инструкция владельцу в отчёте релиза.
+- **Пакеты:** в состав релиза добавлен `animastor-comfyui-workflow-connector` 0.2.0 (от него зависит
+  `@animastor/generation` 0.3.0; в плане публикации его не было). Backend и web берут пакеты v4 из реестра вместо `file:`.
+
+---
+
+## 2026-11-18
+
+### Android (VBook v4, шаг 6; ветка `feat/vbook-v4`, 0.3.0 (13), APK не выложен)
+
+- **«Герои» вместо «Персонажи» / «Голоса» / «Поведение»:** сетка и карточка героя (личность, внешность, облики с
+  назначением на главы и сцены, голос с блоком референса — статусы кандидатов, опрос раз в 3 с, закрепление только
+  `ready` + `passed`, «тембр изменён», загрузка своего образца с `client_action`; привычки с выключателями правил;
+  референс-картинки деградируют на 404 до шага 7), `dirty_scenes`, `possible_duplicate`, битый файл по id или по имени.
+  `repository/HeroModel.kt` один в один с web `heroModel.ts` (те же фикстуры), `repository/HeroApi.kt` — все маршруты
+  `VBOOK_FORMAT_V4.md` §12е (запросы сверены MockWebServer-тестом). Модели и маршруты 3.1 удалены.
+- **Вкладка «Сцена»:** облик участника (`POST /looks/assign`), разовая правка `look_patch` вместо `scene.passport`,
+  «Проблемы книги» (`unknown_participant`) со ссылками на сцены. **Книга 3.1** — «удалите и импортируйте заново».
+- **Личный AI-провайдер:** «Отключить рассуждение модели» и `reasoning_effort` (RSN-1); `reasoning_budget_exhausted`
+  — текст по провайдеру. Профиль промптов — только для чтения не-админу. Старая гостевая cookie `animastor_gid`
+  удаляется. Генерация и запись — только по явному действию (тест). `testDebugUnitTest` 340/0, `apk-build.sh release`
+  OK. Статусы 17 пунктов — `architecture/ANDROID_WEB_PARITY.md`; `05-frontend/HERO_CARD.md` §8.
+
+### Backend (решения владельца по шагу 5; ветка `feat/vbook-v4`)
+
+- **Запись `/api/v1/connectors` — только админ платформы** (коннекторы и глобальный профиль промптов — системные
+  данные); `GET /auth/me` отдаёт `user.is_admin`. Аудит всех маршрутов записи под `/api/v1` — других пробелов нет
+  (`architecture/AUTH_IMPLEMENTATION.md` §2b, `VBOOK_FORMAT_V4.md` §13 В23).
+- **`REDIS_HOST` / `REDIS_PORT` / `PG_HOST` — только из env**, без значения backend не стартует (`[FATAL]`), коротких
+  имён по умолчанию нет; `docker-compose` и CI задают значения явно. Причина — wildcard search-домен хостера в
+  `/etc/resolv.conf` VPS (`architecture/EXPERIMENTAL_BETA_DOCKER_DEPLOYMENT.md`, §13 В24).
+- **`reasoning_budget_exhausted` называет провайдера** (`Provider: system|personal.` в тексте, `provider_source` в
+  теле 400 и событии прогресса): системный — «обратитесь к администратору», личный — `/settings/ai`
+  (`architecture/EXPERIMENTAL_BETA_PERSONAL_AI_PROVIDER.md` §18a, §13 В25).
+
+### Frontend (web, правки шага 6)
+
+- Уведомление `reasoning_budget_exhausted` — по провайдеру (админу — ссылка на `/admin`); селектор профиля промптов
+  в `/settings/worker` — только для чтения не-админу; `isAdminUser` по `is_admin`.
+
+### Deploy (ветка `animastor-deploy` `feat/vbook-v4-infra-hosts`)
+
+- `docker-compose.yml`: backend получает `REDIS_HOST=redis`, `REDIS_PORT=6379` явно (вливать вместе с релизом backend).
+
+### Frontend (VBook v4, шаг 5 — web; ветки `feat/vbook-v4`, не выкачено, не опубликовано)
+
+- **Карточка героя на контракте шага 4** (`animastor-web` `feat/vbook-v4`, собрана merge-коммитами из
+  `feat/hero-card`, `feat/voice-references` и `main`): вкладка «Герои» — единственное место героев, блок референса
+  голоса перенесён в карточку (`/heroes/:heroId/voice/…`), старые «Персонажи» / «Голоса» / «Поведение»,
+  `features/voices`, `api/behaviors` удалены. Загрузка образца — команда с `client_action`; статусы кандидатов и опрос
+  раз в 3 с; закреплять только `ready` + `passed`; «тембр изменён» (`reference_outdated`); битый файл по имени
+  (`/hero-files?file=`); показ `message` ошибок; `dirty_scenes`; запрет `passport: null` при обликах; 201 на создание;
+  `possible_duplicate` — жёлтая строка; `image-refs` 404 и книга без сборки — блок «недоступен».
+  `05-frontend/HERO_CARD.md` §6, §7, §10; `architecture/VBOOK_FORMAT_V4.md` §12ж.
+- **Вкладка «Сцена»:** облик участника, разовая правка `look_patch.<id>.<поле>` (`passport.*` не отправляется),
+  `unknown_participant` — блок «Проблемы книги» со ссылками на сцены. **Книга 3.1** — состояние «удалите и
+  импортируйте заново».
+- **Настройки AI-провайдера (GAP RSN-1):** «Отключить рассуждение модели» и `reasoning_effort` в `/settings/ai` и в
+  админке; `reasoning_budget_exhausted` — понятный текст со ссылкой на настройку.
+  `architecture/EXPERIMENTAL_BETA_PERSONAL_AI_PROVIDER.md` §18a.
+- **`@animastor/web-editor` 0.3.0:** только локации (схемы героев и `BehaviorAddDialog` удалены); app — через
+  `file:` до публикации.
+- **Паритет:** точный список для Android (шаг 6) — `architecture/ANDROID_WEB_PARITY.md`, «VBook v4 — шаг 5 (web) →
+  шаг 6 (Android)».
+
+### Backend (решения владельца по шагу 4; ветка `feat/vbook-v4`)
+
+- **`voice.reference_outdated` — только для `source: designed`**; у загруженного образца хэш тембра не пишется
+  (`VBOOK_FORMAT_V4.md` §5.2, §13 В21).
+- **Гость не заводится ни на каком маршруте:** анонимный запрос к `/api/v1/book/*` и анонимная запись под `/api/v1`
+  — 401 `login_required` до маршрута, без строк `users` / `workspaces` / `guests` (кроме `/auth/*` и машинных
+  поверхностей со своими ключами); ранее заведённые гости работают (`architecture/AUTH_IMPLEMENTATION.md` §2a,
+  §13 В22).
+
+### Architecture (VBook v4, шаг 4 — API героя; ветка `feat/vbook-v4`, не выкачено)
+
+- **API героя** (`@animastor/editor` 0.5.0): `GET/POST /heroes`, `GET/PATCH/DELETE /heroes/:heroId` (белый список
+  полей, `if_rev` → 409 `rev_conflict`, диктора удалить нельзя — 409 `narrator_required`, `?broken=1`), правила и
+  облики героя, `POST /looks/assign`, `GET/PATCH /behaviour`, `PATCH /scene` с `looks.<id>` и `look_patch.<id>.<поле>`.
+  Битый файл с именем, которое не id, — `DELETE /hero-files?file=<имя>` (только имя из текущего `hero_issues`).
+  Запись героя — точечная, через `characterStore`. Маршруты 3.1 `/characters`, `/voices`, `/behaviors` и временный
+  409 `vbook_v4_pending` удалены. Вычисляемые поля героя: `rev`, `voice.reference_state`, `voice.reference_outdated`,
+  `image_refs[].state`. `architecture/VBOOK_FORMAT_V4.md` §8.2, §12е.
+- **Референс голоса — на герое**: `/heroes/:heroId/voice/candidates[/design|/upload|/:name]`, `/voice/file/:name`,
+  `/voice/reference`; команды — только с `client_action.action_id` (загрузка своего образца тоже); старые
+  `/voices/references…` удалены. Контракт для фронтов — `05-frontend/HERO_CARD.md` §6, §10.
+- **Решения владельца 18.11 (§13 В17–В20):** audio — только при смене закреплённого референса; при закреплении
+  пишется `source_timbre_sha256` (схема героя), API отдаёт `voice.reference_outdated`, ничего не перегенерируется
+  само; резолвер облика в реестр инвалидации передаёт хост; нечёткое сопоставление участников убрано (картинка и
+  видео — только точный id), неизвестный участник — предупреждение `unknown_participant`; возможные дубликаты
+  анализа — `possible_duplicate` в `hero_issues` (`blocking: false`), хранятся в `book.json`
+  `analysis.possible_duplicates`.
+- **Книга 3.1** — генерация, анализ, редактор и ассистент отвечают 409 `unsupported_vbook_version` тем же телом, что
+  `GET /book`; удаление книги разрешено (`architecture/VBOOK_FORMAT_V4.md` §9).
+- **Ассистент** (`@animastor/assistant` 0.3.0): `edit_book` по `/heroes/<id>/…` (id, не индекс), старые пути —
+  отказ с подсказкой; промпт о героях.
+- **Провайдер:** тест соединения и чат-ассистент применяют `disable_thinking` / `reasoning_effort` тем же хелпером
+  `ai-reasoning.js`, что анализ — `architecture/EXPERIMENTAL_BETA_PERSONAL_AI_PROVIDER.md` §18a.
+- `@animastor/player` 0.1.5 — на `vbook-runtime` ^0.5.0.
+
+## 2026-11-17
+
+### Architecture (VBook v4, шаг 2б — правки по приёмке 2.6; ветка `feat/vbook-v4`, не выкачено)
+
+- **Герои между окнами анализа не дублируются.** Шаг извлечения героев получает реестр книги (`id`, `name`,
+  до 8 `aliases`, без паспортов; лимит 6000 символов, сначала герои, названные в тексте окна) и правило
+  `characters.md` «известного героя вернуть с его id». Страховка: кандидат, однозначно названный алиасами из
+  `mentions` окна как один герой книги, — этот герой (`matched_by_mentions`); неоднозначное не сливается. Каждое
+  слияние — строка журнала с причиной и уликами. Имя, под которым модель вернула известного героя, становится
+  его алиасом. `architecture/VBOOK_FORMAT_V4.md` §12в.
+- **Рассуждающие модели.** У AI-провайдера (system и workspace) — настройки `disable_thinking`
+  (`chat_template_kwargs: {enable_thinking:false}`) и `reasoning_effort`, по умолчанию выключены; миграция
+  `RSN-1`; API: `PUT /api/v1/settings/ai/provider`, `PUT /api/v1/admin/system-ai`; в UI — позже (GAP в
+  `architecture/ANDROID_WEB_PARITY.md`). Пустой ответ после исчерпания лимита на рассуждение — понятная ошибка
+  без повторов. `architecture/EXPERIMENTAL_BETA_PERSONAL_AI_PROVIDER.md` §18a.
+- **Лимиты шагов по числу юнитов:** визуал сцены, сверка паспортов, полировка раскадровки —
+  `max_tokens = 1024 + N × норма` (4096–16384); юниты в промпте один раз; сверка и полировка возвращают только
+  изменённые юниты.
+- **Голоса — правила очистки v3:** суффикс «Native <язык книги> pronunciation» по языку книги и без него при
+  акценте; икота, опьянение, плач, болезнь, «запыхался» не попадают ни в `timbre`, ни в `manner`.
+- **Скрипт приёмки 2.6** — правило В4 по умолчанию (пустая `manner` → WARN, exit 0; пустой `timbre` — провал),
+  флаг `--allow-empty-manner` убран.
+
+### Architecture (VBook v4, шаг 3 — генерация читает героев; ветка `feat/vbook-v4`, не выкачено)
+
+- **Картинки и видео читают внешность только через `resolveHeroLook`** (облик сцены → облик главы → паспорт,
+  затем `look_patch`); `resolvePassport`, `scene.passport`, `book.characters` в генерации не читаются. Промпты книги
+  v4 совпадают с эталоном 3.1 той же книги (фикстура шага 3). `architecture/VBOOK_FORMAT_V4.md` §12д.
+- **Реестр инвалидации (`@animastor/generation` 0.3.0):** производный ключ `scene.resolved_looks` → image + video
+  ровно тех сцен, где изменилась итоговая внешность; голос героя — `heroes.voice` (audio при смене закреплённого
+  референса). `@animastor/orchestration` 1.4.1.
+- **Поведение:** правила книги — из `behaviour.json` и файлов героев.
+- **Референс голоса:** один слой статусов поверх `referenceState` порта.
+- `scripts/audit-video-actions.js` читает героев v4. Профильные документы: `GENERATORS.md`, `IMAGINATION_UNIT.md`,
+  `VBOOK_BEHAVIOUR.md`, `ai-functional-decomposition-c18.md`.
+
+### Architecture (VBook v4, остатки шага 2б — решения владельца 17.11; ветка `feat/vbook-v4`, не выкачено)
+
+- **Слияние героя по `mentions` — только при двух и более разных уликах**; одна улика — новый герой и строка журнала
+  «Possible duplicate». `architecture/VBOOK_FORMAT_V4.md` §12г.
+- **Голоса — правила очистки v4:** условие вырезается по клаузе, основная часть остаётся; из `timbre` убирается
+  внешность (волосы, лысина, борода, очки, одежда), пол, возраст и телосложение остаются.
+- **`video_action_polish`:** `max_tokens = 1024 + N × 60` (4096–16384).
+- **Пустая `manner` героя с голосом дозапрашивается** в следующем окне, если голос не защищён; `timbre` не меняется.
+- В план шага 4 — тест соединения провайдера и чат-ассистент учитывают `disable_thinking` / `reasoning_effort`.
+
+---
+
+## 2026-11-16
+
+### Architecture (VBook v4, шаг 2 — анализ пишет героев; ветка `feat/vbook-v4`, не выкачено)
+
+- **Решения владельца по вопросам шага 1** (`architecture/VBOOK_FORMAT_V4.md` §13, В8–В16) внесены в код и схему:
+  схема `voice.reference` равна порту (только `.wav`; обязательны `ref_text`, `source`, `locked`; `verification`
+  обязательна для `designed`, `user` — для загруженного образца); `chapters` и `source` — зарезервированные id;
+  битый `behaviour.json` не роняет книгу (правила по умолчанию, блокирует запись поведения и экспорт); пустое
+  значение в облике — отсутствующее, с предупреждением `empty_value`; `narrator_missing` — предупреждение, синтез
+  без диктора — 409; импорт v4 поверх книги 3.1 — 409 с подсказкой удалить старую книгу.
+- **Голос героя — `timbre` + `manner`** из анализа (`voice_generation.md`, `@animastor/ai-analysis` 0.2.0, не
+  опубликован); сюжетные указания не попадают ни в одно поле; `instruction` нет.
+- **Id героя нормализуется** (транслитерация, snake_case, суффикс при коллизии, reserved не выдаются); один и тот
+  же герой в следующих окнах получает тот же id; алиасы пишутся из упоминаний; `mentions.json` не создаётся.
+- **Следующее окно анализа не заменяет** голос, референс, облики и правки пользователя — только добавляет
+  недостающее. Реестр героев окна читается из файлов героев.
+- **Сверка паспортов** пишет `scene.look_patch` только при отличии от итогового облика (`resolveHeroLook`).
+- Примеры для LLM (`backend/ai/examples`) — книга в раскладке v4.
+- **Пути загрузок референса голоса**: три места в `audio/voice-references.js`, остававшиеся на `path.join`,
+  переведены на `joinInside` с повторной проверкой ссылки; в отчёте шага 1 это было ошибочно указано как сделанное.
+- ADR: статус, новый §12б (что сделано шагом 2 и уточнение правила «тот же id — тот же герой»), планы шагов 3
+  (один слой статусов референса) и 4 (удаление битого файла по имени из `hero_issues`).
+
+---
+
+## 2026-11-14
+
+### Architecture (VBook v4, шаг 1 — формат; ветка `feat/vbook-v4`, не выкачено)
+
+- **`@animastor/vbook-runtime` 0.5.0** (не опубликован) — формат VBook 4 по `architecture/VBOOK_FORMAT_V4.md` §12,
+  шаг 1: раскладка `manifest.json` (`vbook_version: 4`) / `book.json` / `behaviour.json` / `characters/<id>.json` /
+  `chapters/`; модель `{manifest, book, bible, locations, behaviour, heroes[], hero_issues[], chapters[]}`;
+  хранилище героев с атомарной записью; `validateCharacterFile` / `validateBehaviourGlobals`; схемы
+  `character-1` и `vbook-bundle-4`; `resolveHeroLook`; порт голоса переведён на файл героя. **VBook 3.1 не
+  читается**: `unsupported_vbook_version` (импорт 422, `GET /book` и скачивание 409).
+- **backend**: один импорт `.vbook` вместо трёх копий, экспорт по белому списку (`?skip_broken=1`), версия в
+  снимках, книга 3.1 в списке книг — `unsupported: true`.
+- **Безопасность импорта**: белый список записей — раскладка v4; файлы 3.1 в архиве v4 пропускаются; путь героя и
+  референса — только внутри своей папки; архив без `manifest.json` в корне — `manifest_not_in_root`.
+- **ADR**: статус, §12 шаг 2 — нормализация id героя от LLM (транслитерация, детерминированное разведение
+  коллизий, тесты на русские имена), новый §12а — что сделано шагом 1 и найденные расхождения Р1–Р8.
+- До шагов 2–4 в ветке не работают: редактирование героев (маршруты 3.1 отвечают 409 `vbook_v4_pending`),
+  ассистент по путям `/characters` / `/voices` / `/behaviors`, анализ и генерация по прежним картам.
+
+---
+
 ## 2026-11-13
+
+### Architecture (уточнение ADR VBook v4; код не начат)
+
+- **Порядок работ v4** (`architecture/VBOOK_FORMAT_V4.md` §12): шаг 0 (проверка входных данных импорта) — отдельным
+  релизом → влитие `feat/behaviour-p0` → влитие `feat/voice-references` с публикацией пакетов и живой проверкой на
+  GPU → шаги 1–6 v4 поверх неё; ветки v4 (`animastor-backend`, `animastor-web` `feat/hero-card`) перебазируются на
+  `feat/voice-references`.
+- **Версии публикации** сдвинуты на минор: `vbook-runtime` 0.5.0, `editor` 0.5.0, `generation` 0.3.0,
+  `web-editor` 0.3.0; `ai-analysis` 0.2.0, `assistant` 0.3.0; `orchestration` (1.4.1) и `player` — патч поверх 1.4.0 /
+  0.1.3. 0.4.0 и 0.2.0 заняты задачей референсных голосов.
+- **§5.2**: порт `@animastor/vbook-runtime/voice` уже существует (ветка `feat/voice-references`); v4 меняет только
+  место хранения `voices.json` → `characters/<id>.json` и переносит блок референсов из вкладки «Голоса» в карточку
+  героя.
+- **§13**: ответы владельца 13.11 (В1–В7) — версия формата целое `4`, `source.txt` остаётся, книги 3.1 удаляются
+  после релиза, APK обновляется обязательно, выбор облика в редакторе главы отложен.
+- **V100 и torch** (`architecture/VOICE_REFERENCES.md` §10, ветка `feat/voice-references`): аудио-нода на sm_70 —
+  torch не выше 2.10 для cu128; PyTorch 2.11 убрал Volta из cu128/cu129, остаётся cu126.
 
 ### Changed (backend + vbook-runtime; не выкачено)
 
@@ -19,6 +239,52 @@ All notable changes to Animastor are documented here.
   «Импорт и скачивание книг доступны после входа в аккаунт». Web `071d6eb`, Android 0.2.9 (11) `31263b3`.
 - Удаление книги и очистка кэша затрагивают только файлы этой книги в каталоге результатов.
 - Тесты backend больше не обращаются к внешним сервисам.
+
+
+---
+
+## 2026-11-12
+
+### Architecture (решение; код backend не начат)
+
+- **VBook v4 — «файл на героя»** (`architecture/VBOOK_FORMAT_V4.md`, ADR). Решения владельца 12.11: один JSON на героя
+  `characters/<id>.json`; диктор — герой; бинарники в `.vbook` не кладутся; **миграции 3.1 → 4 и совместимой
+  API-проекции нет** — импорт TXT сразу создаёт v4, книга 3.1 при открытии и импорте даёт
+  `unsupported_vbook_version` с понятным текстом; API, web и Android меняются одним релизом;
+  `manifest.vbook_version = 4`.
+  - Герой — один объект на диске, в памяти (`book.heroes[]`) и в API (`heroes[]`): `passport`, `voice`
+    (`timbre` + `manner` вместо `instruction`, `reference`), `behaviour` (`profile` + правила героя), `aliases`
+    (вместо `mentions.json`), `image_refs`, `notes`. Схема — `architecture/schemas/animastor.character-1.schema.json`
+    с тремя примерами.
+  - **Облики героя** (§4a, дополнение владельца): именованные перекрытия паспорта `looks[]` в файле героя (поле
+    облика целиком заменяет базовое); назначение `chapter.looks` / `scene.looks` (сцена важнее главы, `"base"` —
+    базовый вопреки главе); разовая правка `scene.look_patch`; **один резолвер** `resolveHeroLook` в
+    `@animastor/vbook-runtime` вместо четырёх; `scene.passport`, `chapter.character`, `scene.visual.character`
+    удаляются. Инвалидация — производный ключ `scene.resolved_looks` → image + video только тех сцен, где изменился
+    итог; аудио не затрагивается. На будущее записано: облики из текста по точной цитате (`look.evidence`).
+  - Архив: единый корень, точные пути, белый список при импорте и экспорте, одно написание `behaviour`
+    (`behaviour.json` — только дефолты и глобальные правила).
+  - API: `/book/:id/heroes[/:heroId]`, правила героя, `if_rev`; маршруты `/characters`, `/voices`, `/behaviors` и
+    поля `characters`, `voices`, `behaviors`, `behavior_rules` удаляются.
+  - Атомарная запись файла героя, валидация, битый файл одного героя не ломает книгу (`hero_issues`).
+  - Разведка: карта чтения / записи данных героя по репозиториям и 23 несогласованности формата (§11).
+  - План по шагам с критериями приёмки и порядком публикации пакетов (§12); открытые вопросы владельцу (§13).
+  - Контракт `voice.reference` (§5.2) сведён с разведкой задачи референсных голосов (коммитов у неё на 12.11 нет):
+    общий порт `getCharacterVoice` / `setCharacterVoiceReference`, референс создаётся только из `timbre`,
+    `build_<id>/voices/` не удаляется очисткой кэша.
+
+### Feature (web, ветка `feat/hero-card`; не влито, не выкачено — ждёт backend v4)
+
+- **Карточка героя** (`05-frontend/HERO_CARD.md`): вкладка «Герои» редактора вместо «Персонажи» / «Голоса» /
+  «Поведение» — сетка плиток и карточка в стиле RPG. Одно сохранение — один `PATCH` только изменённых полей с
+  `if_rev`; выключатели правил, закрепление референса и загрузки — сразу. Единственная команда генерации —
+  «Создать кандидатов» (с `client_action`); открытие сетки и карточки ничего не запускает. Книга 3.1 — отдельное
+  состояние экрана. Раздел «Облики» в духе экипировки: базовый + именованные облики,
+  итоговые характеристики с подсветкой изменённых полей, место под референс облика, «где действует» с переходом в
+  сцену, назначение на главы и сцены из карточки и из редактора сцены. Web `fb9f5cf` (vitest 369/0, tsc OK). Android — спецификация §8 и GAP в
+  `architecture/ANDROID_WEB_PARITY.md`.
+
+---
 
 ## 2026-11-10
 

@@ -4,6 +4,16 @@ All notable changes to Animastor are documented here.
 
 ---
 
+## 2026-11-20
+
+### Changed — gpu-hub: тег образа неизменяем
+
+- `gpu-hub-ghcr-release` отказывает, если `image_tag` уже есть в GHCR: проверка манифеста до сборки и ещё раз
+  перед `docker push`; продолжает только чистый `404`, любой иной ответ, ошибка токена или таймаут — отказ
+  (fail closed). Повторный релиз коммита — только с новым тегом, существующий тег не переезжает на другой digest.
+  Решение владельца после релиза v0.3.5. Описание — `animastor-gpu-hub` `DEPLOYMENT.md` §4; скрипт
+  `.github/scripts/ghcr-tag-absent.sh`; hub main `06c71b5`.
+
 ## 2026-11-19
 
 ### Release — VBook v4 выкачен

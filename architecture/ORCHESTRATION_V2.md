@@ -443,3 +443,11 @@ gzip-JSON {worker_id, seq_from, seq_to, lines: [{ts, level, msg}]}
     8. `video_merge` звук не накладывает: звук соединяется только экспортом `/book/:id/export` → `muxVideoAudio`; плеер синхронизирует сам. «Странность» разведки видео §10 про видео сцены без звука — не баг (снята).
     9. Причины пропуска `skipped_needs_audio` / `skipped_image_dirty` / `skipped_needs_image` — в `summary` команды и в прогрессе (`progress().commands[].skipped`, строка video `progress-panel` → `skipped`).
 
+---
+
+## Дополнение 2026-11-12: kind `voice_reference`
+
+Кандидаты референсов голоса героев — отдельный kind первой ступени `voice_reference` (executor `gpu:audio`,
+слой `audio`, не сценовый ассет) и команда `kind: 'voice_reference'` (`scope.voice`, layer-config не применяется);
+аудио-чанки получают закреплённые референсы как `input_files`. Нормативно — `architecture/VOICE_REFERENCES.md` §6.4, §7.3.
+

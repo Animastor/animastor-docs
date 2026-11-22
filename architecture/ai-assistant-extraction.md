@@ -263,3 +263,61 @@ root-only (`"." → "./src/index.cjs"`); deep imports are blocked.
 1. **`npm publish`** — after monorepo stabilization and version freeze
    (manual, explicit step; the package is publish-ready and `npm pack` verified)
 2. **Old host file references** — comment-only references in 5+ test files (cosmetic, non-functional)
+
+## 13. Honest edit turns — `@animastor/assistant` 0.3.1 (2026-11-22)
+
+Incident 19.11 (VBook 4 book, backend `deploy-045328c`, assistant 0.3.0):
+the assistant answered «Done. I've added … as Scene 2 … filled in
+video.action», the book stayed at one empty scene. Investigation —
+`reports/2026-11-22/assistant-edit-bug.md`.
+
+**Cause.** The model never called `edit_book` (0 tool calls in all 5 turns).
+The book context told it «Read it, modify it as needed, and return the full
+changed version in your response», the Edit prompt said «Always confirm
+changes with the user before applying» and described no scene / unit paths;
+the model pasted a changed scene as a ```json block and wrote «Done». The
+routes relayed the text unchanged — and when `edit_book` WAS called and
+rejected, a non-empty model text («Done») still hid the error.
+
+**Contract since 0.3.1.**
+
+- Book context = read-only snapshot. `buildBookContext(book, { canEdit })` /
+  `buildCompactBookContext(book, { canEdit })`: with `canEdit` (Edit mode,
+  unlocked book — exactly when `edit_book` is offered) the header points at the
+  tool and says a JSON or text in the reply changes nothing; otherwise «in this
+  mode you cannot change the book».
+- Edit prompt: call `edit_book` in the same turn (a question only for a
+  genuinely ambiguous request); never claim a change without the call; paths:
+  `/chapters/<i>/scenes/<j>/units/<k>/<field>`, new scene `add
+  /chapters/<i>/scenes/-`, unit fields `text`, `audio {speaker, text}`,
+  `image {shot, prompt, negative}`, `video {action}`; `add` creates a missing
+  `video` object.
+- One reply pipeline for both routes and every transport (`processChatReply`):
+  several `edit_book` calls apply cumulatively (each validated), the book is
+  saved ONCE through `persistBook`. `edit_book` outside an edit-capable turn is
+  refused (before: a content-embedded call was applied in any mode, a locked
+  book included).
+- `edit_outcome` — additive field of the `/api/v1/ai/chat` response and of the
+  SSE `done` frame:
+
+  | `edit_outcome` | when | user-visible reply |
+  |---|---|---|
+  | `applied` | patches validated and persisted | the model's text, or «✅ Changes applied: N change(s)»; a partial failure appends «⚠️ Some changes were NOT applied: …» |
+  | `rejected` | `edit_book` called, nothing saved (path guard, contract validation, save error, wrong mode) | «⚠️ The book was NOT changed: <reason>» — the model's text is dropped |
+  | `claimed_not_applied` | `edit_book` offered, not called, the reply claims a change (`looksLikeChangeClaim`: «Done», «I've added», «has been updated», «Готово», «добавил…», a pasted book / scene JSON; a reply ending with a question is not a claim) | cloud providers: ONE corrective call («You have NOT called the `edit_book` tool …») inside the same time window; if it still applies nothing — «⚠️ The book was NOT changed: the assistant described the edit but did not apply it…» |
+  | `none` | no edit involved | the model's text; empty + `finish_reason=length` → «ran out of its answer budget»; empty otherwise → «returned no result» |
+
+- A scene / unit added without ids gets `sc-` / `iu-` + 8 hex, unique in the
+  book (`assignMissingIds` inside `applyPatchesValidated`); `participants`
+  defaults to `[]`.
+- Diagnostics: one log line per turn — `[AI] turn` / `[AI STREAM] turn
+  session=… mode=… source=… model=… finish=… reply_chars=… tool_calls=…
+  edit=… patches=… [retry=1]` — and `edit_book not applied (session=…): <reason>`.
+  No prompt or reply text is logged.
+- The connector transport gets no tool schema (Phase-4 contract unchanged); the
+  honest outcome applies, the corrective retry does not.
+
+Fronts render the reply text as is — no UI change (BACKEND-ONLY, see
+`ANDROID_WEB_PARITY.md` «Решения»). Tests: package `test/edit-honesty.test.js`
+(EH1–EH3), backend `tests/assistant-edit-honesty.test.js` (real host ports, a
+stub cloud model; 1 = the 19.11 replay).

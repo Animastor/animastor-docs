@@ -891,6 +891,35 @@ If future requirements demand stricter cross-scene invalidation:
 
 ---
 
+## 10. Delete Book — what the cascade still left (2026-11-22)
+
+`reports/2026-11-22/books-cleanup-recon.md` / `books-cleanup.md` listed what
+`services/book-deletion.cjs` did not remove. Fixed in backend (branch
+`fix/assistant-edit-honesty`, not deployed):
+
+| Leftover | Why it survived | Now |
+|---|---|---|
+| Redis `animastor:iu:<unit_id>` (IU image registry; `redis-helpers` writes it without TTL) | keyed by UNIT id — no book-keyed pattern of `cleanBookRedisKeys` matches it | step 4: unit ids from the bundle (read before `resetBook`) + PG `image_units` / `iu_image_pointers` / `iu_image_fence_reservations` (read before the PG purge); a key is deleted only when its `build_id` is a build of THIS book (chunk build ids, manifest `build_id`, `build_<bookId>`, PG build ids) and no other book's `image_units` row names the unit (two imports of one `.vbook` share unit ids) |
+| PG `iu_image_pointers`, `iu_image_fence_reservations` | not in the table list | in the list (`WHERE book_id`) |
+| PG `gen_command_skips` | keyed by command; went only via FK `ON DELETE CASCADE` from `gen_commands` (and only when `purgeGenV2` is wired) | explicit `DELETE … WHERE command_id IN (SELECT command_id FROM gen_commands WHERE book_id = $1)` before `purgeGenV2` |
+| PG `agent_steps`, `agent_conversations`, `agent_messages` | children of `agent_sessions`; went only via FK cascades | explicit deletes before `agent_sessions` (messages → conversations → steps) |
+
+**`master_margarita_demo` orphans** (11 Redis keys `chunk` / `chunks` /
+`book-scenes`, `data/output/demo_static_007/` — 8 placeholder mp3 + json, all
+dated 13.11 14:28 UTC): the book was imported from `MiM.vbook` by the release
+check of 13.11 (auth-sticky release, `reports/2026-11-13/behaviour-p0-release.md`
+§11) and cleaned up **by hand** — `books` / `scene_assets` rows and the book
+directory removed directly, without `DELETE /api/v1/book/:id`. Opening the book
+had already created the placeholder chunks and audio (read-time recovery), so
+Redis and the build output stayed. The cascade itself would have removed them
+(chunk keys and `demo_static_007` via the chunk build ids — the first check of
+the same day used `DELETE` and left nothing). Rule: checks on prod remove a
+test book only through `DELETE /book`. A book already gone from PG cannot be
+deleted through the HTTP route any more (`requireBookAccess` → 404), so such
+leftovers need a one-off manual purge.
+
+Tests: `backend/tests/book-deletion-orphans.test.js` (real test PG, mock Redis).
+
 ## Appendix: Areas Audited
 
 - Backend: `entity-crud-routes.cjs`, `core-routes.cjs` (DELETE book — gold standard),

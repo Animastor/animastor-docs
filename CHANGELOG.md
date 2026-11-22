@@ -4,6 +4,50 @@ All notable changes to Animastor are documented here.
 
 ---
 
+## 2026-11-22
+
+### Fixed — ассистент не отвечает «Done», если книга не изменилась (`@animastor/assistant` 0.3.1, не выкачено)
+
+- **Инцидент 19.11** (книга v4, backend `deploy-045328c`, assistant 0.3.0): ассистент ответил «Done. I've added … as
+  Scene 2 … filled in video.action», книга осталась с одной пустой сценой. Модель ни разу не вызвала `edit_book`:
+  контекст книги в системном промпте требовал «modify it as needed, and return the full changed version in your
+  response», режим Edit — «Always confirm changes with the user before applying»; модель вставляла JSON сцены в текст,
+  роуты отдавали её текст как есть. Разбор — `reports/2026-11-22/assistant-edit-bug.md`.
+- Контекст книги — **снимок только для чтения**; в ходе с `edit_book` он указывает на инструмент, в других режимах —
+  «в этом режиме книгу менять нельзя». Промпт Edit: вызывать `edit_book` в том же ходе, не заявлять правку без
+  вызова; пути глав / сцен / юнитов (`add /chapters/<i>/scenes/-`, поля `text`, `audio`, `image`, `video.action`).
+- **Честный итог правки** в обоих роутах (`/ai/chat`, `/ai/chat/stream`): новое аддитивное поле `edit_outcome`
+  (`applied` | `rejected` | `claimed_not_applied` | `none`) в ответе и в SSE-кадре `done`. Отклонённая или
+  несохранённая правка — «⚠️ The book was NOT changed: <причина>» вместо текста модели; заявление правки без вызова
+  (`Done`, `I've added`, `Готово`, `добавил…`, вставленный JSON книги) — одна корректирующая повторная попытка у
+  облачных провайдеров, затем «⚠️ The book was NOT changed …».
+- Сцене / юниту, добавленным без id, сервер присваивает `sc-`/`iu-` + 8 hex; несколько вызовов `edit_book` за ход
+  применяются накопительно и сохраняются один раз; `edit_book` вне Edit-хода (другой режим, книга `locked`)
+  отклоняется — раньше встроенный в текст вызов применялся в любом режиме.
+- Диагностика: строка на каждый ход (`turn session=… edit=… patches=…`, без текста промпта и ответа) и причина
+  неприменённой правки. Профиль — `architecture/ai-assistant-extraction.md` §13.
+
+### Changed — `/regenerate` на книге без текста: 422 `book_has_no_text` (backend, не выкачено)
+
+- Раньше команда принималась, audio-диспетчер получал 0 задач (`no_jobs_generated`), повторял каждый тик и
+  отменялся — пользователь видел только «failed». Теперь до любых задач / dirty / диспетчера (обе оркестрации):
+  **422** `{error:'book_has_no_text', code:'book_has_no_text', message}`, если у книги есть сцены, но ни у одной
+  нет материала для запрошенных слоёв (audio — текст; image — текст, `image.prompt` или обложка; video — то же или
+  `video.action`). Книга без сцен — прежний пустой 200. `architecture/COMMAND_ONLY_GENERATION.md` §«Команды и
+  отмены». Web показывает текст `message` (без ключа i18n), Android — общий «HTTP 422»: **GAP** в
+  `architecture/ANDROID_WEB_PARITY.md`.
+
+### Fixed — удаление книги дочищает IU-реестр, IU-таблицы, `gen_command_skips`, дочерние `agent_*` (backend, не выкачено)
+
+- `book-deletion.cjs`: ключи `animastor:iu:<unit_id>` (ключуются юнитом — ни один шаблон `cleanBookRedisKeys` их не
+  ловил; id юнитов — из бандла до `resetBook` и из PG до чистки; ключ удаляется, только если его `build_id` — сборка
+  этой книги и юнит не принадлежит другой книге); таблицы `iu_image_pointers`, `iu_image_fence_reservations`; явное
+  удаление `gen_command_skips` (по `gen_commands.book_id`) и `agent_messages` / `agent_conversations` /
+  `agent_steps` до родителей (раньше — только через FK `ON DELETE CASCADE`).
+- Сироты демо-книги `master_margarita_demo` (11 ключей Redis, `data/output/demo_static_007`)
+  — следствие ручной уборки проверки 13.11 (строки PG и каталог книги удалены вручную, без `DELETE /book`), а не
+  сбоя каскада. `03-audit/DELETE_LIFECYCLE_AUDIT.md` §10.
+
 ## 2026-11-20
 
 ### Changed — gpu-hub: тег образа неизменяем

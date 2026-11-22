@@ -91,7 +91,10 @@ finished_at` (+ `upload`, `ref_text_source` у загруженных).
 
 **Сохранность.** «Очистить кэш» (`routes/book/cache-routes.cjs`) и `cleanup-service` удаляют всё в
 `build_<id>/` **кроме `voices/`** (`utils/build-dir.js`). `voices/` удаляется только вместе с книгой
-(`book-deletion.cjs`). Загруженные пользователем образцы — тем более.
+(`book-deletion.cjs`). Загруженные пользователем образцы — тем более. Каталог сборки книги v2 —
+`OUTPUT_DIR/<manifest.build_id>/`: с 2026-11-22 очистка и удаление книги находят его по манифесту, `voices/` в нём
+сохраняется так же («Удалить сгенерированный контент» в «Мои книги», `05-frontend/MY_BOOKS.md` §4; тест
+`backend/tests/my-books.test.js`).
 
 ## 4. Поток
 

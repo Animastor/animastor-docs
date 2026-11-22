@@ -116,6 +116,32 @@ Android — ветка `animastor-android` `feat/vbook-v4`, 0.3.0 (13): `c84998f
 
 ---
 
+## «Мои книги» (2026-11-22)
+
+Web и Android в одной задаче (ветки `feat/my-books`, не влиты, не выкачены; отчёт `reports/2026-11-22/my-books.md`).
+Поведение — `05-frontend/MY_BOOKS.md`. Один контракт: `GET /api/v1/books?limit=500`, `POST /book/:id/opened`,
+`DELETE /book/:id/cache`, `DELETE /book/:id`. Одинаковые ключи строк `library_tab_*`, `my_books*`, `coming_soon`.
+Чистая логика — web `features/myBooks/myBooksModel.ts` ↔ Android `repository/MyBooksModel.kt`, те же случаи в
+тестах (`myBooksModel.test.ts` ↔ `MyBooksModelTest.kt`).
+
+| № | Что | Web | Android | Статус |
+|---|---|---|---|---|
+| 1 | «Библиотека» — вкладки «Мои книги» / «Общая библиотека» (заглушка); iframe / WebView публичной страницы убраны | `pages/LibraryPage.tsx`, `/library?tab=mine\|public` | `LibraryFragment` + `TabLayout`, `LibraryTab` | PARITY |
+| 2 | Один экран для всех ярлыков: «Файл» → «Библиотека», Настройки → «Мои книги», меню аккаунта → «Мои книги» | `router.openMyBooks()` / `libraryUrl()`; тест `myBooks.test.tsx` | `MainActivity.openLibrary` / `openMyBooks` — единственное место создания `LibraryFragment`; тест `MyBooksNavigationTest` | PARITY |
+| 3 | Список: недавно открытые сверху; название, формат, дата, «Открыть», меню удаления; 3.1 — «устаревший формат», только «Удалить книгу»; пустой — «Создать книгу» / «Открыть файл»; аноним — подсказка войти | `features/myBooks/MyBooksTab.tsx` | `LibraryFragment.renderBooks` / `bookCard` / `renderEmpty` | PARITY |
+| 4 | Подтверждение с названием книги, одно на список, экран 3.1 «Файла» и 3.1 редактора; действие над открытой книгой сбрасывает её на устройстве | `ConfirmBookAction.tsx`, `myBooksStore.runBookAction` | `MyBookActions.confirm` | PARITY |
+| 5 | «Открыть» — поток deep link: книга → «Плеер» при наличии медиа, иначе «Генератор»; 409 — экран 3.1 на «Файле» | `myBooksStore.openFromLibrary` → `fileStore.openBookById` | `GenerateViewModel.openBookById` → `OpenResult` | PARITY |
+| 6 | `POST /book/:id/opened` при открытии / импорте / создании (fire-and-forget); не при восстановлении сессии | `myBooksApi.markBookOpened` из `fileStore` | `Repository.markBookOpened` из `GenerateViewModel` | PARITY |
+| 7 | Восстановление сессии не выбирает книгу 3.1 (первая поддерживаемая книга списка) | `fileStore.restoreBookSession` | `GenerateViewModel.restoreBookSession` | PARITY |
+| 8 | Настройки: блок «Очистить» убран, пункт «Мои книги» | `SettingsPage.tsx` | `fragment_settings.xml` `myBooksButton` | PARITY |
+| 9 | Пункт «Мои книги» в меню аккаунта — только у вошедшего | `UserMenu.tsx` | `AuthDialog.showAccountPanel` | PARITY |
+| 10 | Прямая загрузка `/library?tab=…` на `app.animastor.org` | нужна правка nginx (`animastor-deploy` `feat/my-books`) | N/A (нет адресной строки) | WEB-ONLY |
+
+Отличия, принятые как паритет: меню книги — `PopupMenu` (web — выпадающая панель); дата — системный формат
+`DateUtils` (web — `toLocaleString`).
+
+---
+
 ## Расхождения чата (AI chat stream, LLM Sharing Phase 3)
 
 Источник: `/home/animastor/reports/2026-10-29/android-ai-chat-stream-fix.md` §5,
@@ -521,7 +547,7 @@ the «воркер» wording from the start. EN dictionary unchanged (web parity
 |---|---|---|
 | Cookie persistence | `PersistentCookieJar` in SharedPreferences vs browser native | Android has no browser cookie jar; this is the standard native approach |
 | File picker | SAF `ActivityResultContracts.OpenDocument` vs `<input type="file">` | Standard Android file access |
-| Library view | WebView loading `app.animastor.org/library` | Reuses web library; WebView has a separate CookieManager (separate session). Acceptable native detail — native book list UI would be a separate feature |
+| Library view | ~~WebView loading `app.animastor.org/library`~~ — с 2026-11-22 нативный экран с вкладками «Мои книги» / «Общая библиотека» (раздел «Мои книги» выше) | Закрыто: WebView и его отдельная сессия больше не используются |
 | Offline resilience | `restoreBookSession` keeps book on IOException | Android-specific: mobile networks are less reliable. Cross-user risk eliminated by stash-on-logout |
 | Playback position | In-memory only (`SharedPositionManager`) | Position is not persisted to SharedPreferences; same as web (in-memory signals). Acceptable for both |
 | Process recreation | Book session survives via SharedPreferences + init{} re-read | Equivalent to web localStorage restore on page reload |
@@ -670,7 +696,7 @@ P1 important user functionality · P2 secondary UX · P3 cosmetic.
 | Imagination units | ✓ | ✓ | — | none | — |
 | Player (reveal gate, unit seek, state machine) | ✓ PlayPage | ✓ PlayFragment + PlayerGate | — | none | — |
 | Generator navigation/status on mode bar | ✓ | ✓ | — | none | — |
-| Library | ✓ public /library page | ✓ LibraryFragment | C | none | — |
+| Library | ✓ /library?tab=mine\|public (с 2026-11-22) | ✓ LibraryFragment (вкладки) | C | none | — |
 | Workflows manager | ✓ | ✓ | — | none | — |
 | Developer view | ✓ /dev | ✓ DeveloperViewFragment | — | none | — |
 | API contracts (/api/v1, cookie auth) | ✓ | ✓ same endpoints via Retrofit | — | none | — |

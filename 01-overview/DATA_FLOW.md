@@ -330,7 +330,7 @@ book-sync.js:syncBook(bookId)
 
 **Problem it solves:** An open book was bound to one client — Android cleared `bookId` on every cold start, mobile web held it only in memory, and the server couldn't "serve" a book list. A book imported on web wouldn't appear on Android.
 
-**Source of truth — server:** the SHA-256 TXT → `book_id` mapping lives in the PG `book_source` table (registered on import, used for deduplication). `GET /api/v1/books` (`recent-books-routes.cjs`) returns recent books: records from PG `book_source` (for each — status from `lazy-book` manifest: state/title/build_id) + directory scan of `data/books/` for vbook imports without PG records; sorted by `updated_at`, limit 20. Rows for books no longer on disk are discarded.
+**Source of truth — server:** the SHA-256 TXT → `book_id` mapping lives in the PG `book_source` table (registered on import, used for deduplication). `GET /api/v1/books` (`recent-books-routes.cjs`) returns recent books: records from PG `book_source` (for each — status from `lazy-book` manifest: state/title/build_id) + directory scan of `data/books/` for vbook imports without PG records; sorted recently-opened first (`last_opened_at`, else `updated_at`), limit 20 by default (≤ 500 — the «Мои книги» list asks for 500). Rows for books no longer on disk are discarded. Since 2026-11-22 each entry also carries `vbook_version`, `last_opened_at`, `updated_at_ms`, `has_generated_content` (`05-frontend/MY_BOOKS.md` §4).
 
 **Client recovery (mirrored on Android and web):**
 ```
@@ -339,7 +339,8 @@ Cold client start
        → GET /book/:id/status — server validation
          → 200 → restore this book
          → 404/other error → step 2
-  → 2. Fallback: GET /api/v1/books → first (most recent) book
+  → 2. Fallback: GET /api/v1/books → first (most recent) SUPPORTED book
+       (a VBook 3.1 entry, `unsupported: true`, is skipped — 2026-11-22)
        → book found → save book_id/build_id locally
   → 3. Player warmup: GET /book/:id → scenes + cover
        → emit playbackPrepared (no auto-tab navigation)

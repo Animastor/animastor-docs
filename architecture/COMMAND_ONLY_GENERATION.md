@@ -127,7 +127,22 @@ progress-panel показывает строки `blocked`, `interrupted` и `fa
 - `POST /regenerate`: задачи только для включённых слоёв. Выключенные слои из
   `worker_types` отбрасываются (`skipped_worker_types` в ответе). Если не
   осталось ни одного — **409** `{error:'layer_disabled', disabled_worker_types}`,
-  tombstone и cancel flag при этом **не** снимаются. Принятая команда снимает
+  tombstone и cancel flag при этом **не** снимаются.
+- `POST /regenerate` на книге, где **нечего генерировать** (2026-11-22): если у
+  книги есть сцены, но ни у одной нет материала для запрошенных слоёв — **422**
+  `{error:'book_has_no_text', code:'book_has_no_text', message}` до любых задач,
+  dirty-отметок и диспетчера, для обеих оркестраций; cancel flag и tombstone не
+  снимаются. Материал (`backend/src/helpers/book-text.cjs`, в роут — через
+  `routeDeps.generationMaterial`): audio — непустой
+  `unit.text` / `unit.audio.text` (юниты сцены и dialogue-блоков) или
+  `scene.audio.full_text`; image — то же, `unit.image.prompt` или обложка
+  (глава / сцена `type: cover`); video — то же или `unit.video.action`. Без
+  `worker_types` проверяются все три слоя; неизвестный слой — прежний 400
+  валидации; книга без сцен — прежний пустой 200. Раньше такая команда давала
+  `no_jobs_generated` → повтор каждый тик → отмена, и пользователь видел только
+  «failed» (`reports/2026-11-22/assistant-edit-bug.md` §4). Фронты: web
+  показывает `message`, Android — общий текст (GAP, `ANDROID_WEB_PARITY.md`).
+- Принятая команда снимает
   cancel flag и tombstone (флаг без TTL следующей команде не мешает),
   вытесняет `blocked`/`interrupted`/`failed` задачи тех же типов на тех же
   сценах и создаёт новые.

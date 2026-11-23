@@ -264,7 +264,7 @@ root-only (`"." → "./src/index.cjs"`); deep imports are blocked.
    (manual, explicit step; the package is publish-ready and `npm pack` verified)
 2. **Old host file references** — comment-only references in 5+ test files (cosmetic, non-functional)
 
-## 13. Honest edit turns — `@animastor/assistant` 0.3.1 (2026-11-22)
+## 13. Honest edit turns — `@animastor/assistant` 0.3.1–0.3.2 (2026-11-22)
 
 Incident 19.11 (VBook 4 book, backend `deploy-045328c`, assistant 0.3.0):
 the assistant answered «Done. I've added … as Scene 2 … filled in
@@ -314,6 +314,10 @@ rejected, a non-empty model text («Done») still hid the error.
   session=… mode=… source=… model=… finish=… reply_chars=… tool_calls=…
   edit=… patches=… [retry=1]` — and `edit_book not applied (session=…): <reason>`.
   No prompt or reply text is logged.
+- `edit_book` arguments go through `editBookPatches` (0.3.2): `patches` as an
+  array, as a JSON string of the array (the shape the prod system model sends —
+  0.3.1 refused it), a single operation, a bare array, or a nested
+  `{patches: {patches: [...]}}`; broken JSON → «invalid edit_book arguments».
 - The connector transport gets no tool schema (Phase-4 contract unchanged); the
   honest outcome applies, the corrective retry does not.
 

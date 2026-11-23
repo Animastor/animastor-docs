@@ -894,8 +894,8 @@ If future requirements demand stricter cross-scene invalidation:
 ## 10. Delete Book — what the cascade still left (2026-11-22)
 
 `reports/2026-11-22/books-cleanup-recon.md` / `books-cleanup.md` listed what
-`services/book-deletion.cjs` did not remove. Fixed in backend (branch
-`fix/assistant-edit-honesty`, not deployed):
+`services/book-deletion.cjs` did not remove. Fixed in backend `12dbc4e` (prod since 22.11,
+`deploy-12dbc4e`):
 
 | Leftover | Why it survived | Now |
 |---|---|---|

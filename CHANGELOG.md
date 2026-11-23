@@ -4,9 +4,21 @@ All notable changes to Animastor are documented here.
 
 ---
 
+## 2026-11-23
+
+### Release — backend `deploy-4160db5` (`@animastor/assistant` 0.3.2)
+
+- **Прод:** backend `deploy-4160db5` (`sha256:3e1cc8b1…`), deploy `100d8c2`. Промежуточный `deploy-12dbc4e`
+  (assistant 0.3.1, 22.11, deploy `5e0a5df`) — честный итог правки, 422 `book_has_no_text`, каскад удаления.
+- **0.3.2:** системная модель (nemotron) передаёт `edit_book` как `{"patches": "<JSON-строка массива>"}` — 0.3.1
+  честно отказывала («called without patches»); `editBookPatches` разбирает такую строку, одиночную операцию и голый
+  массив. Прод-проверка на тестовом аккаунте: «добавь сцену с двумя юнитами и video.action» → `edit_outcome:
+  applied`, сцена и `video.action` на диске; правка текста и `video.action` существующего юнита — `applied`.
+- Отчёты: `reports/2026-11-22/stage168-prod-release.md`, `reports/2026-11-23/stage169-prod-release.md`.
+
 ## 2026-11-22
 
-### Fixed — ассистент не отвечает «Done», если книга не изменилась (`@animastor/assistant` 0.3.1, не выкачено)
+### Fixed — ассистент не отвечает «Done», если книга не изменилась (`@animastor/assistant` 0.3.1 → 0.3.2)
 
 - **Инцидент 19.11** (книга v4, backend `deploy-045328c`, assistant 0.3.0): ассистент ответил «Done. I've added … as
   Scene 2 … filled in video.action», книга осталась с одной пустой сценой. Модель ни разу не вызвала `edit_book`:
@@ -27,7 +39,7 @@ All notable changes to Animastor are documented here.
 - Диагностика: строка на каждый ход (`turn session=… edit=… patches=…`, без текста промпта и ответа) и причина
   неприменённой правки. Профиль — `architecture/ai-assistant-extraction.md` §13.
 
-### Changed — `/regenerate` на книге без текста: 422 `book_has_no_text` (backend, не выкачено)
+### Changed — `/regenerate` на книге без текста: 422 `book_has_no_text` (backend)
 
 - Раньше команда принималась, audio-диспетчер получал 0 задач (`no_jobs_generated`), повторял каждый тик и
   отменялся — пользователь видел только «failed». Теперь до любых задач / dirty / диспетчера (обе оркестрации):
@@ -37,7 +49,7 @@ All notable changes to Animastor are documented here.
   отмены». Web показывает текст `message` (без ключа i18n), Android — общий «HTTP 422»: **GAP** в
   `architecture/ANDROID_WEB_PARITY.md`.
 
-### Fixed — удаление книги дочищает IU-реестр, IU-таблицы, `gen_command_skips`, дочерние `agent_*` (backend, не выкачено)
+### Fixed — удаление книги дочищает IU-реестр, IU-таблицы, `gen_command_skips`, дочерние `agent_*` (backend)
 
 - `book-deletion.cjs`: ключи `animastor:iu:<unit_id>` (ключуются юнитом — ни один шаблон `cleanBookRedisKeys` их не
   ловил; id юнитов — из бандла до `resetBook` и из PG до чистки; ключ удаляется, только если его `build_id` — сборка

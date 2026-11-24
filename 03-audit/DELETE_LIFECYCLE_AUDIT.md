@@ -127,6 +127,12 @@ Naming (`filesystem-store.js:25-47`):
 - `cleanupService.cleanupBuild` removes only an **entire build directory**
   (`cleanup-service.cjs:56-81`), used when deleting a book.
 - No background GC for orphan files at scene/chapter level (see §9).
+- **Book deletion and shared build ids (2026-11-24, stage171 / post171).** The build directory is
+  `OUTPUT_DIR/<build_id>/`; artifact files carry the book id, but `voices/` belongs to the build. A build id
+  another book also names is never removed as a whole directory (`book-deletion.cjs`), and new books no longer
+  share one: blank books get `manual_<uuid>`, a `.vbook` whose `build_id` is taken gets `vbook_<uuid>`. An
+  archive without `build_id` still lands in the shared `OUTPUT_DIR/default/` — open. Details:
+  `05-frontend/MY_BOOKS.md` («Удаление книги»).
 
 ### 2.3 PostgreSQL — ❌ not cleaned (Critical C1)
 

@@ -89,7 +89,7 @@ web `features/myBooks/ConfirmBookAction.tsx`, Android `ui/MyBookActions.kt`; к�
 | `vbook_version` | number \| string \| null | формат книги из манифеста (у 3.1 — из ошибки версии) |
 | `unsupported` | `true` \| нет | книга неподдерживаемого формата (было и раньше) |
 | `last_opened_at` | number (epoch ms) \| null | когда владелец последний раз открыл книгу |
-| `updated_at_ms` | number (epoch ms) \| null | `updated_at`, приведённый к ms (`updated_at` остаётся в исходном виде — ISO-строка или epoch-секунды) |
+| `updated_at_ms` | number (epoch ms) \| null | `updated_at`, приведённый к ms (`updated_at` остаётся в исходном виде — ISO-строка или epoch-секунды); нет `updated_at` (пустая книга до первой правки) — `manifest.created_at` (post171; `updated_at` при этом остаётся `0`) |
 | `has_generated_content` | boolean \| null | есть ли у книги то, что удалит `DELETE /book/:id/cache` (не считая `voices/`) |
 
 `limit` — по умолчанию 20, максимум 500. Порядок — §2. Сбой чтения `last_opened_at` (PG недоступен, миграция
@@ -122,10 +122,17 @@ Redis, которые его называют, поэтому маршрут д�
 Штатный каскад `services/book-deletion.cjs`, без изменений, кроме `manifest.build_id` выше и правила общего
 каталога сборки:
 
-- **Один `build_id` может быть у двух книг.** `.vbook`, импортированный под другим `book_id` с тем же
+- **Один `build_id` мог быть у двух книг.** `.vbook`, импортированный под другим `book_id` с тем же
   `manifest.build_id`; две пустые книги, созданные в одну миллисекунду (`manual_<ms>`). Файлы артефактов
   названы с префиксом `book_id` и делятся по владельцу (`book-artifacts.cjs`), а `voices/` принадлежит каталогу
   сборки, а не книге.
+- **Новые книги своего `build_id` больше не делят (post171):** пустая книга — `manual_<uuid>` (не `manual_<bookId>`:
+  `book_id` может быть кириллическим, `build_id` — только ASCII, `BUILD_ID_RE`); импорт `.vbook`, чей `build_id` уже
+  называет другая книга (PG — `book-repo.buildIdsNamedByOtherBooks`, или её манифест; ошибка PG = «занят»), получает
+  `vbook_<uuid>`, записанный в манифест; повторный импорт той же книги свой `build_id` сохраняет. Архив **без**
+  `build_id` — как раньше: манифест без него, все потребители берут `'default'`, то есть общий `OUTPUT_DIR/default/`
+  (и общий `voices/`) у всех таких книг — не исправлено, см. `reports/2026-11-24/post171-fixes.md`. Уже существующие
+  книги с общим `build_id` (если есть) защищает правило ниже.
 - Поэтому `build_id`, который называет другая книга — строка PG другого `book_id` в любой таблице с колонкой
   `build_id` (`scenes`, `output_manifests`, `image_units`, `scene_assets`, `iu_image_pointers`,
   `iu_image_fence_reservations`) или манифест другой книги на диске, — **не удаляется каталогом целиком**:

@@ -130,8 +130,8 @@ Naming (`filesystem-store.js:25-47`):
 - **Book deletion and shared build ids (2026-11-24, stage171 / post171).** The build directory is
   `OUTPUT_DIR/<build_id>/`; artifact files carry the book id, but `voices/` belongs to the build. A build id
   another book also names is never removed as a whole directory (`book-deletion.cjs`), and new books no longer
-  share one: blank books get `manual_<uuid>`, a `.vbook` whose `build_id` is taken gets `vbook_<uuid>`. An
-  archive without `build_id` still lands in the shared `OUTPUT_DIR/default/` — open. Details:
+  share one: blank books get `manual_<uuid>`, a `.vbook` whose `build_id` is taken or missing gets `vbook_<uuid>`.
+  `OUTPUT_DIR/default/` (books without a build id) is never removed as a whole. Details:
   `05-frontend/MY_BOOKS.md` («Удаление книги»).
 
 ### 2.3 PostgreSQL — ❌ not cleaned (Critical C1)

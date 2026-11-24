@@ -6,6 +6,29 @@ All notable changes to Animastor are documented here.
 
 ## 2026-11-24
 
+### Release — «Мои книги» (backend `deploy-43c76a8`, web, Android 0.3.2)
+
+- **Прод:** backend `deploy-43c76a8` (`sha256:a8684646…`, merge `43c76a8`, approve `14aeac3`), deploy `fd4027c`
+  (строка `image:` backend + nginx), web `99b805e`, Android **0.3.2 (versionCode 15)** (`a37182a`), version.json — site `37de256`.
+- **«Мои книги»** (`05-frontend/MY_BOOKS.md`): Библиотека — вкладки «Мои книги» (`/library?tab=mine`) и «Общая библиотека»
+  (`?tab=public`, «Скоро»); один экран для «Файл» → «Библиотека», Настройки → «Мои книги», меню аккаунта → «Мои книги»;
+  список своих книг (недавно открытые сверху, формат VBook, «Открыта/Изменена»), «Удалить сгенерированный контент» /
+  «Удалить книгу» с подтверждением, где названа книга; книга 3.1 — «устаревший формат», только удаление. Блок «Очистить»
+  в Настройках убран.
+- **Backend:** `GET /api/v1/books` + `vbook_version`, `last_opened_at`, `updated_at_ms`, `has_generated_content`, порядок —
+  недавно открытые, `limit` ≤ 500; `POST /api/v1/book/:id/opened` пишет только `books.last_opened_at` (аноним 401, чужая 403,
+  3.1 — 409). Миграция **MB-1** при старте: `books.last_opened_at BIGINT NULL` (аддитивная, без backfill).
+- **Каскад удаления каталога сборки:** `DELETE /book/:id/cache` и `DELETE /book/:id` удаляют и `OUTPUT_DIR/<manifest.build_id>/`
+  книги VBook 4 / v2 без чанков Redis (раньше оставался). `build_id`, который называет и другая книга (PG или её манифест;
+  ошибка PG = «общий»), каталогом целиком не удаляется — только записи удаляемой книги, `voices/` и файлы другой книги остаются.
+- **nginx:** `app.animastor.org/library` — экран SPA (прямая загрузка и F5 остаются в приложении); публичная
+  `animastor.org/library` не менялась.
+- **Таймер после отказа запуска (web + Android):** при 409 `layer_disabled`, 422 `book_has_no_text` (web также 409
+  `voice_reference_required`) таймер, запущенный нажатием, возвращается к прежнему значению, поток прогресса закрывается
+  (если генерация до нажатия не шла). Сетевая ошибка и 429 — без изменений. Web `d348145`, Android `0fcc69d`
+  (`GenerationStartArming`); паритет — `architecture/ANDROID_WEB_PARITY.md`, строка 2026-11-24 (FIXED).
+- Отчёты: `reports/2026-11-22/my-books.md`, `reports/2026-11-24/stage171-my-books-release.md`.
+
 ### Fixed — понятное сообщение при запуске генерации на книге без текста (web + Android 0.3.1)
 
 - `POST /api/v1/book/:id/regenerate` на книге без текста отвечает **422** `book_has_no_text` (backend с 22.11,

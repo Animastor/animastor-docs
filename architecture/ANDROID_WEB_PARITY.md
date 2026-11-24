@@ -65,6 +65,7 @@
 
 | Дата | Web | Android сейчас | Причина / как закрыть | Тег |
 |---|---|---|---|---|
+| 2026-11-24 | Отказ `/regenerate` до создания задачи (409 `layer_disabled`, 422 `book_has_no_text`, 409 `voice_reference_required`): `generateStore.startGeneration` → одна функция `settleRefusedStart` — флаги сессии как раньше, таймер, запущенный нажатием, возвращается к прежнему значению (не «0:00»), поток прогресса, открытый нажатием, закрывается (остаётся, если генерация уже шла). Общий путь ошибки (сеть, 429) не меняется: он не доказывает, что ничего не запущено. Тест `state/generateStore.refusal.test.ts` (web, stage171) | `GenerateViewModel.startGeneration` → чистый хелпер `GenerationStartArming` (`arm` до `_isRegenerating = true`, `settleRefused`) через `settleRefusedStart(armed)` в ветках `LayerDisabled` / `BookHasNoText`: то же правило, что на web; общий `onFailure` (сеть, 429) не меняется. Тест `GenerationStartArmingTest` (поведение на фейковой сессии с правилами таймера ViewModel + source-guard'ы проводки) — android `0fcc69d`, 0.3.2 (15) | Найдено при правке web (stage171, `reports/2026-11-24/stage171-my-books-release.md`), закрыто обоими фронтами в той же задаче (решение владельца): web `d348145`, android `0fcc69d` | GAP → FIXED |
 | 2026-11-24 | `/regenerate` на пустой книге — **422** `{ error: 'book_has_no_text', code: 'book_has_no_text', message }` (backend, 2026-11-22: задача больше не создаётся и не падает позже `no_jobs_generated`). Текст берётся **по коду**, не `message`: `classifyStartError` → `{ kind: 'book_has_no_text' }`, `generateStore` — ключ i18n `generate_book_has_no_text` (ru/en), оба места `/regenerate` (диалог масштаба, «Повторить» строки) показывают строку без обёртки `generate_start_failed`; неизвестный код — `message` с сервера (`ApiError.message` из `errorBodyMessage`). Затронуты `features/generation/commandErrors.ts` (+3 кейса в `commandErrors.test.ts`), `state/generateStore.ts`, `pages/GeneratePage.tsx`, `app/i18n.ts` — web `30b448b` (vitest 429/0, `tsc --noEmit` OK) | То же: `TaskStatusHelpers.classifyStartError` разбирает тело один раз — `422` + код из `code`/`error` → `StartError.BookHasNoText`, `Other` теперь берёт `message` из тела, если он есть (раньше в тосте был `HTTP 422`); `GenerateViewModel.GenerationResult.BookHasNoText`, `GenerateFragment.showGenerationResult` → `R.string.generate_book_has_no_text` (ru/en, те же ключи, что на web); `TaskStatusHelpersTest` +2 — android `e1d8bb4`, 0.3.1 (versionCode 14) `0da25e5`; `testDebugUnitTest` 342/0, `./apk-build.sh release` (lintVital) OK | Закрыто обоими фронтами в одной задаче (ветки `fix/regenerate-no-text-ui-main` от `main`, выкатка — stage170). Правило для обоих фронтов: известный код — текст из `i18n.ts` / `strings.xml`; неизвестный код — `message` с сервера. Отчёты: `reports/2026-11-24/frontend-book-has-no-text.md`, `reports/2026-11-24/stage170-frontend-release.md` | GAP → FIXED |
 | 2026-11-22 | `/regenerate` → **422** `book_has_no_text` (`COMMAND_ONLY_GENERATION.md` §«Команды и отмены»): `classifyStartError` → `other`, на экране — `message` сервера как есть (английский текст, без ключа i18n). Код web не менялся | `classifyStartError` → `Other(e.message)` → «HTTP 422» без объяснения. Код не менялся | Backend-изменение задачи `assistant-edit-bug` (`reports/2026-11-22/assistant-edit-bug.md`); фронты в задачу не входили. Закрыть обоими фронтами: вид `book_has_no_text` в `classifyStartError` (`commandErrors.ts` ↔ `TaskStatusHelpers.kt`, те же фикстуры) и ключ i18n `generate_book_has_no_text` en+ru | **GAP** |
 | 2026-11-18 | Решения владельца по шагу 5 (`VBOOK_FORMAT_V4.md` §12з, §13 В23, В25): профиль промптов (`PUT /connectors/profiles`, глобальный) меняет только админ платформы — `/settings/worker` показывает селектор только для чтения с подсказкой `connector_profile_admin_only`, `isAdminUser` по `/auth/me` `is_admin`; `reasoning_budget_exhausted` по провайдеру: личный — ссылка на `/settings/ai`, системный — «обратитесь к администратору», админу — ссылка на `/admin` (`features/ai/reasoning.tsx` `reasoningBudgetProvider`); тест `reasoningProvider.test.tsx` 9 — web `f171981` (vitest 426/0, tsc OK) | То же: `WorkerSettingsFragment` (селектор выключен, PUT не уходит), `AuthUser.is_admin` / `isAdmin()`; текст ошибки по провайдеру — `ui/ReasoningSettings.kt` (личный — нажатие открывает настройки провайдера); `ProfileAdminOnlyTest` 2, `ReasoningSettingsTest` 6 — android `9acddde`, `efa5d6d` | Обоими фронтами в одной задаче; ссылка на админку — только web (админки в Android нет) | PARITY |
@@ -113,6 +114,32 @@ Android — ветка `animastor-android` `feat/vbook-v4`, 0.3.0 (13): `c84998f
 | 15 | Генерация — только по нажатию: открытие сетки и карточки не вызывает ничего, кроме чтения списка кандидатов | тесты `HeroesPanel.test.tsx` («opening the grid calls no API at all», «opening a card only READS candidates») | тот же тест на `BackendApi` | **FIXED** — все запросы карточки идут через `HeroCardController`; тест: открытие — один GET кандидатов, сетка не вызывает API, `design` / `upload` — только из обработчиков нажатия (`HeroCardControllerTest`) |
 | 16 | Настройки AI-провайдера: «Отключить рассуждение модели» + `reasoning_effort` (`null` = не отправлять) с подсказкой; `reasoning_budget_exhausted` — понятный текст со ссылкой на настройку | `features/ai/reasoning.tsx`; `SettingsPage.tsx`, `AdminPage.tsx` (админка — только web) | только личные настройки провайдера; те же ключи `reasoning_*` | **FIXED** — личные настройки AI-провайдера: переключатель + `reasoning_effort` с подсказками, в `PUT` и в тесте с `null` (`ReasoningSettings.kt`); текст ошибки по провайдеру (п.0c шага 6): личный — нажатие открывает настройки, системный — «обратитесь к администратору» |
 | 17 | Аноним: backend больше не заводит гостя — 401 `login_required` на запись и на любой `/book/*` | без правок: окно входа на 401 уже есть (web `b437888`) | без правок: окно входа на 401 уже есть; проверить, что старый `animastor_gid` в `PersistentCookieJar` не мешает | **FIXED** — `PersistentCookieJar.withoutGuestCookie`: `animastor_gid` удаляется при старте, не сохраняется и не отправляется (`GuestCookieTest`); окно входа на 401 — как было |
+
+---
+
+## «Мои книги» (2026-11-22)
+
+Web и Android в одной задаче (ветки `feat/my-books`, не влиты, не выкачены; отчёт `reports/2026-11-22/my-books.md`).
+Поведение — `05-frontend/MY_BOOKS.md`. Один контракт: `GET /api/v1/books?limit=500`, `POST /book/:id/opened`,
+`DELETE /book/:id/cache`, `DELETE /book/:id`. Одинаковые ключи строк `library_tab_*`, `my_books*`, `coming_soon`.
+Чистая логика — web `features/myBooks/myBooksModel.ts` ↔ Android `repository/MyBooksModel.kt`, те же случаи в
+тестах (`myBooksModel.test.ts` ↔ `MyBooksModelTest.kt`).
+
+| № | Что | Web | Android | Статус |
+|---|---|---|---|---|
+| 1 | «Библиотека» — вкладки «Мои книги» / «Общая библиотека» (заглушка); iframe / WebView публичной страницы убраны | `pages/LibraryPage.tsx`, `/library?tab=mine\|public` | `LibraryFragment` + `TabLayout`, `LibraryTab` | PARITY |
+| 2 | Один экран для всех ярлыков: «Файл» → «Библиотека», Настройки → «Мои книги», меню аккаунта → «Мои книги» | `router.openMyBooks()` / `libraryUrl()`; тест `myBooks.test.tsx` | `MainActivity.openLibrary` / `openMyBooks` — единственное место создания `LibraryFragment`; тест `MyBooksNavigationTest` | PARITY |
+| 3 | Список: недавно открытые сверху; название, формат, дата, «Открыть», меню удаления; 3.1 — «устаревший формат», только «Удалить книгу»; пустой — «Создать книгу» / «Открыть файл»; аноним — подсказка войти | `features/myBooks/MyBooksTab.tsx` | `LibraryFragment.renderBooks` / `bookCard` / `renderEmpty` | PARITY |
+| 4 | Подтверждение с названием книги, одно на список, экран 3.1 «Файла» и 3.1 редактора; действие над открытой книгой сбрасывает её на устройстве | `ConfirmBookAction.tsx`, `myBooksStore.runBookAction` | `MyBookActions.confirm` | PARITY |
+| 5 | «Открыть» — поток deep link: книга → «Плеер» при наличии медиа, иначе «Генератор»; 409 — экран 3.1 на «Файле» | `myBooksStore.openFromLibrary` → `fileStore.openBookById` | `GenerateViewModel.openBookById` → `OpenResult` | PARITY |
+| 6 | `POST /book/:id/opened` при открытии / импорте / создании (fire-and-forget); не при восстановлении сессии | `myBooksApi.markBookOpened` из `fileStore` | `Repository.markBookOpened` из `GenerateViewModel` | PARITY |
+| 7 | Восстановление сессии не выбирает книгу 3.1 (первая поддерживаемая книга списка) | `fileStore.restoreBookSession` | `GenerateViewModel.restoreBookSession` | PARITY |
+| 8 | Настройки: блок «Очистить» убран, пункт «Мои книги» | `SettingsPage.tsx` | `fragment_settings.xml` `myBooksButton` | PARITY |
+| 9 | Пункт «Мои книги» в меню аккаунта — только у вошедшего | `UserMenu.tsx` | `AuthDialog.showAccountPanel` | PARITY |
+| 10 | Прямая загрузка `/library?tab=…` на `app.animastor.org` | нужна правка nginx (`animastor-deploy` `feat/my-books`) | N/A (нет адресной строки) | WEB-ONLY |
+
+Отличия, принятые как паритет: меню книги — `PopupMenu` (web — выпадающая панель); дата — системный формат
+`DateUtils` (web — `toLocaleString`).
 
 ---
 
@@ -521,7 +548,7 @@ the «воркер» wording from the start. EN dictionary unchanged (web parity
 |---|---|---|
 | Cookie persistence | `PersistentCookieJar` in SharedPreferences vs browser native | Android has no browser cookie jar; this is the standard native approach |
 | File picker | SAF `ActivityResultContracts.OpenDocument` vs `<input type="file">` | Standard Android file access |
-| Library view | WebView loading `app.animastor.org/library` | Reuses web library; WebView has a separate CookieManager (separate session). Acceptable native detail — native book list UI would be a separate feature |
+| Library view | ~~WebView loading `app.animastor.org/library`~~ — с 2026-11-22 нативный экран с вкладками «Мои книги» / «Общая библиотека» (раздел «Мои книги» выше) | Закрыто: WebView и его отдельная сессия больше не используются |
 | Offline resilience | `restoreBookSession` keeps book on IOException | Android-specific: mobile networks are less reliable. Cross-user risk eliminated by stash-on-logout |
 | Playback position | In-memory only (`SharedPositionManager`) | Position is not persisted to SharedPreferences; same as web (in-memory signals). Acceptable for both |
 | Process recreation | Book session survives via SharedPreferences + init{} re-read | Equivalent to web localStorage restore on page reload |
@@ -670,7 +697,7 @@ P1 important user functionality · P2 secondary UX · P3 cosmetic.
 | Imagination units | ✓ | ✓ | — | none | — |
 | Player (reveal gate, unit seek, state machine) | ✓ PlayPage | ✓ PlayFragment + PlayerGate | — | none | — |
 | Generator navigation/status on mode bar | ✓ | ✓ | — | none | — |
-| Library | ✓ public /library page | ✓ LibraryFragment | C | none | — |
+| Library | ✓ /library?tab=mine\|public (с 2026-11-22) | ✓ LibraryFragment (вкладки) | C | none | — |
 | Workflows manager | ✓ | ✓ | — | none | — |
 | Developer view | ✓ /dev | ✓ DeveloperViewFragment | — | none | — |
 | API contracts (/api/v1, cookie auth) | ✓ | ✓ same endpoints via Retrofit | — | none | — |

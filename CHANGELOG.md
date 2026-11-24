@@ -4,6 +4,21 @@ All notable changes to Animastor are documented here.
 
 ---
 
+## 2026-11-24
+
+### Fixed — понятное сообщение при запуске генерации на книге без текста (web + Android 0.3.1)
+
+- `POST /api/v1/book/:id/regenerate` на книге без текста отвечает **422** `book_has_no_text` (backend с 22.11,
+  на проде с `deploy-12dbc4e`). Раньше web показывал английский `message` сервера в обёртке «Не удалось запустить»,
+  Android — тост `HTTP 422`.
+- Теперь оба фронта показывают свою строку по коду `generate_book_has_no_text` — ru: «В книге пока нет текста —
+  добавьте текст в сцены и запустите генерацию.», en: «The book has no text yet — add text to its scenes, then start
+  the generation.» — без обёртки; сессия не остаётся в состоянии «генерируется». Неизвестный код ошибки запуска —
+  `message` с сервера (на Android раньше — транспортный `HTTP <код>`).
+- Web `30b448b`; Android `e1d8bb4`, версия 0.3.1 (versionCode 14). GAP закрыт: `architecture/ANDROID_WEB_PARITY.md`,
+  строка 2026-11-24.
+- Отчёты: `reports/2026-11-24/frontend-book-has-no-text.md`, `reports/2026-11-24/stage170-frontend-release.md`.
+
 ## 2026-11-23
 
 ### Release — backend `deploy-4160db5` (`@animastor/assistant` 0.3.2)

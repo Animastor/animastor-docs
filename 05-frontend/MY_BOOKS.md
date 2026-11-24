@@ -159,7 +159,8 @@ Android `fragment_file.xml` `unsupportedBox`. Та же кнопка — в со
 
 ## 7. Web: адрес `/library` на app.animastor.org
 
-На `app.animastor.org` nginx отдаёт `location = /library` публичной страницей сайта, а не SPA. Внутри
-приложения переход работает (history API), но прямая загрузка или обновление `/library?tab=mine` откроет
-публичную страницу. Нужна правка `animastor-deploy` `nginx/default.conf` (убрать `location = /library` из блока
-`app.animastor.org` — SPA-fallback `location /` отдаст приложение); выкатывается вместе с web.
+До 2026-11-24 nginx на `app.animastor.org` отдавал `location = /library` публичной страницей сайта, а не SPA:
+внутри приложения переход работал (history API), но прямая загрузка или обновление `/library?tab=mine` открывали
+публичную страницу. Правка `animastor-deploy` `nginx/default.conf` — блок `location = /library` удалён из
+`app.animastor.org`, его отдаёт SPA-fallback `location /`; выкачено 2026-11-24 вместе с web (deploy `fd4027c`).
+Публичная страница библиотеки — `animastor.org/library`, не менялась.

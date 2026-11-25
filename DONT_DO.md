@@ -79,6 +79,16 @@ This file contains a list of changes that previously caused critical regressions
 - Even if boundary desync reappears in a specific LTX test (8N+1), fix alignment in video preparation/assembly, not by adding a second time model to Player.
 - Reason: the second time scale created a second timeline and desynchronization; removed as part of the audio master timeline refactor.
 
+### 12. Changing `packages/<pkg>/src` without publishing the package and bumping the backend lock
+**Forbidden:** Merging a change to `animastor-backend/packages/<pkg>/src` for a package that backend installs from the npm
+registry without publishing a new version and updating `backend/package.json` / `package-lock.json`.
+
+- post171 (2026-11-25): the blank-book `build_id` fix lived in `packages/animastor-editor/src`; every backend test passed
+  (`tests/monorepo-source-bindings.cjs` runs the `packages/` sources), but the image `deploy-af7babd` installed the
+  registry `@animastor/editor` 0.5.0 without it. Fixed by `@animastor/editor` 0.5.1 + lock bump (`deploy-5beff62`).
+- Guard: `backend/tests/packages-published.test.js` fails with «packages/<pkg> изменён, а версия в lock старая —
+  опубликуйте и обновите lock» when `node_modules/<name>/src` ≠ `packages/<dir>/src`.
+
 ## Pre-Change Checklist
 
 Before making any changes to player files (PlayFragment.kt, PlaybackViewModel.kt, Repository.kt):

@@ -4,6 +4,29 @@ All notable changes to Animastor are documented here.
 
 ---
 
+## 2026-11-25
+
+### Release — post171: свои build_id новых книг, дата пустой книги, отказ запуска при идущей генерации (backend `deploy-5beff62`, web, Android 0.3.3)
+
+- **Прод:** backend `deploy-5beff62` (`sha256:f50657b7…`, merge `5beff62`, approve `acbc16a`), deploy `1878010`
+  (только строка `image:` backend), web `e1cd6a8`, Android **0.3.3 (versionCode 16)** (`12db5fb`), version.json — site `2b338b2`.
+  Образ `deploy-af7babd` (merge `af7babd`) не выкатывался: в нём был опубликованный `@animastor/editor` 0.5.0 без фикса пустой книги.
+- **Дата пустой книги:** `GET /api/v1/books` — у пустой книги без `updated_at` поле `updated_at_ms` = `created_at`
+  (раньше `null`, «Изменена» без даты); `updated_at` не меняется (`05-frontend/MY_BOOKS.md`).
+- **build_id новых книг не общий:** пустая книга — `manual_<uuid>` (было `manual_<Date.now()>`, совпадал у двух книг одной
+  миллисекунды; `@animastor/editor` **0.5.1**). Импорт `.vbook`: архив без `build_id` или с `build_id`, который уже называет
+  другая книга (PG — любая таблица с `build_id` и `book_id`, или её манифест; ошибка PG = «занят»), получает `vbook_<uuid>`,
+  записанный в манифест; повторный импорт той же книги свой `build_id` сохраняет.
+- **`OUTPUT_DIR/default/`** каскадом удаления книги целиком не удаляется никогда — только записи самой книги, `voices/`
+  остаётся (`03-audit/DELETE_LIFECYCLE_AUDIT.md` §2.2). На проде книг без `build_id` нет, каталога `default/` нет — миграции не было.
+- **Отказ запуска при идущей генерации (web + Android):** если сессия шла до нажатия, отказ (409/422) возвращает
+  `isRegenerating` / `newGenerationPending` / статус к значениям до нажатия; если не шла — как раньше (IDLE, флаги сброшены).
+  Web `settleRefusedStart`, Android `GenerationStartArming.settleRefused`; паритет — `architecture/ANDROID_WEB_PARITY.md`,
+  строка 2026-11-24 (FIXED).
+- **Guard пакетов:** `backend/tests/packages-published.test.js` — `src` каждого пакета из `packages/`, который backend ставит
+  из npm, должен совпадать с установленной копией (`DONT_DO.md` №12).
+- Отчёт: `reports/2026-11-24/post171-fixes.md`.
+
 ## 2026-11-24
 
 ### Release — «Мои книги» (backend `deploy-43c76a8`, web, Android 0.3.2)

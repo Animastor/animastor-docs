@@ -4,6 +4,37 @@ All notable changes to Animastor are documented here.
 
 ---
 
+## 2026-11-26
+
+### Release — идемпотентный bootstrap книги (backend `deploy-ee1a331`, web, Android 0.3.4)
+
+- **Прод:** backend `deploy-ee1a331` (`sha256:3c3d070d…`, merge `ee1a331`, approve `dd55128`), deploy `1d6342c`
+  (только строка `image:` backend), web `368b27f`, Android **0.3.4 (versionCode 17)** (`86eb49e`), version.json — site `aa375c5`.
+  `@animastor/vbook-runtime` **0.6.0**, `@animastor/web-generator-vbook` **0.2.0** (npm).
+- **Одна копия `@animastor/vbook-runtime`:** `editor` / `player` / `ai-analysis` требуют `^0.5.0` (для 0.x — `<0.6.0`),
+  npm ставил им вложенные 0.5.0 без привязки `configureBooksRoot`; `backend/package.json` `overrides`
+  (`"$@animastor/vbook-runtime"`) — одна копия, страж `backend/tests/packages-single-copy.test.js` (`DONT_DO.md` №14).
+
+- **Повод:** `ba_1795695606197` — два файла «Пролог» с `chapter_index` 0: два параллельных
+  `POST /bootstrap` шли двумя прогонами (`reports/2026-11-26/ba-1795695606197-prologue-dup-recon.md`).
+- **Lock на книгу** (`architecture/BOOTSTRAP_IDEMPOTENCY.md`): Redis `animastor:bootstrap-lock:<bookId>`
+  (`NX EX 900`, heartbeat, освобождение только своим token). Под ним — все пути к окнам: `/bootstrap`
+  (с постобработкой), `/bootstrap-next-window`, `/resume-bootstrap`, `trigger-next-window`, `window-generator`.
+  Занято → **409** `{ error: 'bootstrap_in_progress', book_id, session_id }`; уже bootstrapped →
+  **200 no-op** `already_bootstrapped: true`. Чистка partial-глав/героев — только под lock'ом.
+- **Одна глава на `chapter_index`** (`@animastor/vbook-runtime` 0.6.0): первое окно переиспользует главу и
+  заменяет её сцены; два файла с одним `chapter_index` → `DuplicateChapterIndexError` вместо тихого дубля
+  в `chapters_order`.
+- **`chapter_id` вместо `undefined`:** чанки и placeholder-аудио `/bootstrap`, `trigger-next-window`,
+  `window-generator`; ответ `/bootstrap` — `chapters[].chapter_id` (+ `chapter` = тот же id).
+- **Окно 0 в PG:** `book_generation_sessions.source_offset_start/end` заполняются.
+- **Клиенты:** web (`@animastor/web-generator-vbook` 0.2.0) и Android — POST отправляется один раз (web ретраев
+  не делал и раньше; Android — `retryOnConnectionFailure(false)` для bootstrap-вызовов), повторный старт при
+  POST в полёте игнорируется, 409 → слежение за прогрессом. Паритет — `architecture/ANDROID_WEB_PARITY.md`,
+  строка 2026-11-26.
+- Книга `ba_1795695606197` не чинилась (владелец удалит и импортирует заново).
+- Отчёты: `reports/2026-11-26/bootstrap-idempotency.md`, `reports/2026-11-26/bootstrap-idempotency-release.md`.
+
 ## 2026-11-25
 
 ### Release — post171: свои build_id новых книг, дата пустой книги, отказ запуска при идущей генерации (backend `deploy-5beff62`, web, Android 0.3.3)

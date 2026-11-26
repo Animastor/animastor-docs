@@ -89,6 +89,25 @@ registry without publishing a new version and updating `backend/package.json` / 
 - Guard: `backend/tests/packages-published.test.js` fails with «packages/<pkg> изменён, а версия в lock старая —
   опубликуйте и обновите lock» when `node_modules/<name>/src` ≠ `packages/<dir>/src`.
 
+### 13. Running a book window outside the bootstrap lock
+**Forbidden:** Calling `lazyBook.createFromAnalysis` / `appendToBook` (or the agent `bootstrapWithAgent` /
+`bootstrapNextWindow`) for a book without holding its bootstrap lock (`backend/src/services/bootstrap-lock.js`,
+`animastor:bootstrap-lock:<bookId>`), or deleting a book's chapter / hero files from a run that does not hold it.
+
+- 2026-11-26, `ba_1795695606197`: two parallel `POST /bootstrap` → two runs → two «Пролог» files with
+  `chapter_index` 0 in `chapters_order`. Entry points go through `txtImporter.bootstrapImportedText` /
+  `bootstrapNextWindow` (they take the lock) or their `*UnderLock` variants inside `withBootstrapLock`.
+- Contract: `architecture/BOOTSTRAP_IDEMPOTENCY.md` (409 `bootstrap_in_progress`, no-op, one chapter per
+  `chapter_index`).
+
+### 14. A nested copy of an @animastor package in the backend lock
+**Forbidden:** Merging a backend `package-lock.json` with `node_modules/**/node_modules/@animastor/*` entries.
+
+- 2026-11-26: `@animastor/vbook-runtime` 0.6.0 + `editor` / `player` / `ai-analysis` on `^0.5.0` → nested 0.5.0
+  copies; a nested copy never gets the composition-root bindings (`configureBooksRoot`) — editor book operations
+  would throw in prod, while the tests (monorepo sources) pass. Fix: `overrides` in `backend/package.json`
+  (or bump the dependents). Guard: `backend/tests/packages-single-copy.test.js`.
+
 ## Pre-Change Checklist
 
 Before making any changes to player files (PlayFragment.kt, PlaybackViewModel.kt, Repository.kt):

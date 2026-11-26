@@ -6,7 +6,14 @@ All notable changes to Animastor are documented here.
 
 ## 2026-11-26
 
-### Идемпотентный bootstrap книги (ветки `fix/bootstrap-idempotency`, не выкачено)
+### Release — идемпотентный bootstrap книги (backend `deploy-ee1a331`, web, Android 0.3.4)
+
+- **Прод:** backend `deploy-ee1a331` (`sha256:3c3d070d…`, merge `ee1a331`, approve `dd55128`), deploy `1d6342c`
+  (только строка `image:` backend), web `368b27f`, Android **0.3.4 (versionCode 17)** (`86eb49e`), version.json — site `aa375c5`.
+  `@animastor/vbook-runtime` **0.6.0**, `@animastor/web-generator-vbook` **0.2.0** (npm).
+- **Одна копия `@animastor/vbook-runtime`:** `editor` / `player` / `ai-analysis` требуют `^0.5.0` (для 0.x — `<0.6.0`),
+  npm ставил им вложенные 0.5.0 без привязки `configureBooksRoot`; `backend/package.json` `overrides`
+  (`"$@animastor/vbook-runtime"`) — одна копия, страж `backend/tests/packages-single-copy.test.js` (`DONT_DO.md` №14).
 
 - **Повод:** `ba_1795695606197` — два файла «Пролог» с `chapter_index` 0: два параллельных
   `POST /bootstrap` шли двумя прогонами (`reports/2026-11-26/ba-1795695606197-prologue-dup-recon.md`).
@@ -25,9 +32,8 @@ All notable changes to Animastor are documented here.
   не делал и раньше; Android — `retryOnConnectionFailure(false)` для bootstrap-вызовов), повторный старт при
   POST в полёте игнорируется, 409 → слежение за прогрессом. Паритет — `architecture/ANDROID_WEB_PARITY.md`,
   строка 2026-11-26.
-- **Выпуск:** ждёт `npm publish` `@animastor/vbook-runtime` 0.6.0 и `@animastor/web-generator-vbook` 0.2.0
-  (владелец), затем bump зависимостей backend / web-app. Книга `ba_1795695606197` не чинилась.
-- Отчёт: `reports/2026-11-26/bootstrap-idempotency.md`.
+- Книга `ba_1795695606197` не чинилась (владелец удалит и импортирует заново).
+- Отчёты: `reports/2026-11-26/bootstrap-idempotency.md`, `reports/2026-11-26/bootstrap-idempotency-release.md`.
 
 ## 2026-11-25
 

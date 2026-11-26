@@ -1,8 +1,8 @@
 # Bootstrap idempotency — один прогон окна на книгу
 
-> **Статус:** Current (2026-11-26). Ветки `fix/bootstrap-idempotency` в `animastor-backend`,
-> `animastor-web`, `animastor-android`, `animastor-docs`. Не выкачено: ждёт `npm publish`
-> `@animastor/vbook-runtime` 0.6.0 и `@animastor/web-generator-vbook` 0.2.0.
+> **Статус:** Current (2026-11-26), выкачено: backend `deploy-ee1a331`, web `368b27f`, Android 0.3.4 (17);
+> `@animastor/vbook-runtime` 0.6.0, `@animastor/web-generator-vbook` 0.2.0. В backend `overrides`
+> держит одну копию vbook-runtime для `editor` / `player` / `ai-analysis`.
 > **Повод:** книга `ba_1795695606197` — два файла «Пролог» с `chapter_index` 0
 > (разведка `reports/2026-11-26/ba-1795695606197-prologue-dup-recon.md`).
 
@@ -80,8 +80,8 @@
   `/bootstrap` | `/bootstrap-next-window` отправляется один раз — ни пакет, ни
   `api/client.ts` `postJsonLong` его не повторяют (таймаут 15 мин, без `retryWithBackoff`);
   повторный старт, пока POST в полёте, игнорируется (`poll.isBootstrapInFlight` /
-  `setBootstrapInFlight`, состояние — `VBookPollState.bootstrapInFlight` хоста; привязка
-  в `generateStore` — после публикации 0.2.0); 409 `bootstrap_in_progress` →
+  `setBootstrapInFlight`, состояние — `VBookPollState.bootstrapInFlight` хоста, привязка
+  в `generateStore`; закрытие книги `stopGenerationSession` флаг сбрасывает); 409 `bootstrap_in_progress` →
   слежение за прогрессом (`pollVBookProgress`), не ошибка.
 - **Android** (`GenerateViewModel.startVBookGeneration`): то же правило; bootstrap-вызовы
   идут через `RetrofitClient.bootstrapApi` (`retryOnConnectionFailure(false)` — OkHttp не

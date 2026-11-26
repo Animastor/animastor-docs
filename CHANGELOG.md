@@ -4,6 +4,31 @@ All notable changes to Animastor are documented here.
 
 ---
 
+## 2026-11-26
+
+### Идемпотентный bootstrap книги (ветки `fix/bootstrap-idempotency`, не выкачено)
+
+- **Повод:** `ba_1795695606197` — два файла «Пролог» с `chapter_index` 0: два параллельных
+  `POST /bootstrap` шли двумя прогонами (`reports/2026-11-26/ba-1795695606197-prologue-dup-recon.md`).
+- **Lock на книгу** (`architecture/BOOTSTRAP_IDEMPOTENCY.md`): Redis `animastor:bootstrap-lock:<bookId>`
+  (`NX EX 900`, heartbeat, освобождение только своим token). Под ним — все пути к окнам: `/bootstrap`
+  (с постобработкой), `/bootstrap-next-window`, `/resume-bootstrap`, `trigger-next-window`, `window-generator`.
+  Занято → **409** `{ error: 'bootstrap_in_progress', book_id, session_id }`; уже bootstrapped →
+  **200 no-op** `already_bootstrapped: true`. Чистка partial-глав/героев — только под lock'ом.
+- **Одна глава на `chapter_index`** (`@animastor/vbook-runtime` 0.6.0): первое окно переиспользует главу и
+  заменяет её сцены; два файла с одним `chapter_index` → `DuplicateChapterIndexError` вместо тихого дубля
+  в `chapters_order`.
+- **`chapter_id` вместо `undefined`:** чанки и placeholder-аудио `/bootstrap`, `trigger-next-window`,
+  `window-generator`; ответ `/bootstrap` — `chapters[].chapter_id` (+ `chapter` = тот же id).
+- **Окно 0 в PG:** `book_generation_sessions.source_offset_start/end` заполняются.
+- **Клиенты:** web (`@animastor/web-generator-vbook` 0.2.0) и Android — POST отправляется один раз (web ретраев
+  не делал и раньше; Android — `retryOnConnectionFailure(false)` для bootstrap-вызовов), повторный старт при
+  POST в полёте игнорируется, 409 → слежение за прогрессом. Паритет — `architecture/ANDROID_WEB_PARITY.md`,
+  строка 2026-11-26.
+- **Выпуск:** ждёт `npm publish` `@animastor/vbook-runtime` 0.6.0 и `@animastor/web-generator-vbook` 0.2.0
+  (владелец), затем bump зависимостей backend / web-app. Книга `ba_1795695606197` не чинилась.
+- Отчёт: `reports/2026-11-26/bootstrap-idempotency.md`.
+
 ## 2026-11-25
 
 ### Release — post171: свои build_id новых книг, дата пустой книги, отказ запуска при идущей генерации (backend `deploy-5beff62`, web, Android 0.3.3)

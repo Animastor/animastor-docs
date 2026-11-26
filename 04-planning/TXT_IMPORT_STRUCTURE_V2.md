@@ -271,6 +271,9 @@ v2 import flow:
    (`prologue`/`chapter`/…), typographic scene, cover from `structure.title`.
 5. `bootstrapNextWindow` takes offset from saved scenes, continues in next
    map segment (map from `window_data.structure.segments`).
+6. Every window run (first and next) holds the per-book bootstrap lock; the
+   first window reuses the chapter with its `chapter_index` (one file per
+   `chapter_index`) — `architecture/BOOTSTRAP_IDEMPOTENCY.md` (2026-11-26).
 
 ## 8. Universality (Acceptance Table)
 

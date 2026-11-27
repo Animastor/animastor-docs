@@ -6,6 +6,19 @@ All notable changes to Animastor are documented here.
 
 ## 2026-11-27
 
+### LISTEN `gen_progress` переживает обрыв PG + `no-store` для `/book/:id/generate/*` (ветки `fix/gen-listen-nostore`, не влиты)
+
+- **`@animastor/orchestration` 1.4.3** (не опубликован, готов к публикации): `listenProgress` — обработчик `'error'`
+  на выделенном клиенте (процесс не падает), при `'error'`/`'end'` — `release(err)` и повторный `LISTEN` с паузой
+  1 → 2 → 5 → 10 → 30 с (дальше 30 с), `onReconnect` / `onDisconnect`, `close()` останавливает переподключения.
+  `backend/package.json` остаётся на `^1.4.2` до публикации (как в 006).
+- **Backend:** хост на восстановлении рассылает подписчикам свежий агрегат (`progress-hub.resync()`, SSE
+  `reason:"resync"`), в лог — одна строка на обрыв и одна на восстановление.
+- **`no-store` для `/book/:id/generate/*`** во всех трёх местах: backend `middleware/no-store.js`, web
+  `api/client.ts` `isNoStorePath`, Android `PollRequests.kt` (найдено при выпуске generate API v2: `GET
+  /generate/progress` отдавался без `Cache-Control: no-store`, с ETag — нарушение О1). `/generate-next` не затронут.
+- Нормативно — `architecture/ORCHESTRATION_V2.md` §9 «Переподключение LISTEN». Отчёт: `reports/2026-11-27/gen-listen-nostore.md`.
+
 ### Release — generate API v2 (backend `deploy-0ad9d70`, web `474f78d`, Android 0.3.5 (18))
 
 - **Merge:** backend `0ad9d70` (approve `99c85ad`), web `474f78d`, android `529b2af`, docs `7c9ce60`; deploy `f563a67`

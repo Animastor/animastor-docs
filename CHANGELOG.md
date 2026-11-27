@@ -6,6 +6,18 @@ All notable changes to Animastor are documented here.
 
 ## 2026-11-27
 
+### Release — generate API v2 (backend `deploy-0ad9d70`, web `474f78d`, Android 0.3.5 (18))
+
+- **Merge:** backend `0ad9d70` (approve `99c85ad`), web `474f78d`, android `529b2af`, docs `7c9ce60`; deploy `f563a67`
+  (только строка `image:` backend), site `897a5e1` (version.json 0.3.5).
+- **Образ:** `sha256:8d3ddbdec1d97e9caebfd0fb48a43a3fbe0efeaf87a9d75761065e82a2dfddcd`, revision = merge `0ad9d70`.
+- **Проверки на проде** (тестовый аккаунт и пустая книга, созданы и удалены, снимки PG/Redis/диска до и после совпали;
+  генерация не запускалась): `GET /generate/progress` → 200 `active:false`; `GET /generate/stream` → первое событие
+  `reason:"connect"`; web-бандл ходит в `/generate/progress` · `/generate/stream` · `/generate/stop`; APK 0.3.5 (18) на сайте.
+- **Известно:** `GET /book/:id/generate/progress` отдаётся без `Cache-Control: no-store` (список no-store backend / web /
+  Android покрывает `/book/:id/generation*`, а не `/book/:id/generate/*`) — отдельная правка.
+- Отчёт: `reports/2026-11-27/generate-api-v2-release.md`.
+
 ### Generate API v2 — этап 2 API (`ORCHESTRATION_V2.md` §11.1–11.2), паритет фронтов; ветки `feat/generate-api-v2`, не влиты
 
 - **Backend `c466ea5`:** `POST /api/v1/book/:bookId/generate` `{scope, layers, mode: "missing"|"all", client_action_id}` →
@@ -28,7 +40,7 @@ All notable changes to Animastor are documented here.
   `testDebugUnitTest` 378/0, `assembleDebug` + `lintVitalRelease` OK.
 - **Не делалось:** удаление legacy-кода и роутов (шаг 5), `layer-config` в PG (шаг 2), слой `vbook` (задача H),
   npm publish, выкатка. Пакет `@animastor/orchestration` не менялся (1.4.2).
-- Отчёт: `reports/generate-api-v2.md`.
+- Отчёт: `reports/2026-11-27/generate-api-v2.md`.
 
 ### Release — все книги на orchestration v2 по умолчанию (миграция `006-default-v2`, backend `deploy-91f5653`)
 

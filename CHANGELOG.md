@@ -4,6 +4,27 @@ All notable changes to Animastor are documented here.
 
 ---
 
+## 2026-11-27
+
+### Release — все книги на orchestration v2 по умолчанию (миграция `006-default-v2`, backend `deploy-91f5653`)
+
+- **Решение владельца (26.11):** legacy-оркестрация не нужна, все книги — с нуля на v2. Код legacy не удалялся —
+  это этап 4 ADR (`reports/2026-11-26/legacy-removal-recon.md`).
+- **PG-миграция `006-default-v2`** (`@animastor/orchestration` **1.4.2**, `src/gen/sql/006-default-v2.js`):
+  `books.orchestration` `DEFAULT 'v2'` + `UPDATE books SET orchestration='v2' WHERE orchestration='legacy'`.
+  Идемпотентна (статтер раннера выполняет её на каждом старте бэкенда в одной транзакции под advisory-lock);
+  001 не тронут — свежая база создаёт колонку с `'legacy'` и сразу передефолтится. Новая книга (импорт, бланк)
+  колонку не пишет и берёт значение по умолчанию; существующая переключается только этим `UPDATE`.
+  Миграция применяется при старте v2-хоста (`ORCH_V2_ENABLED=1`). Нормативно — `architecture/ORCHESTRATION_V2.md`,
+  «Дополнение 2026-11-27».
+- **Прод:** backend `deploy-91f5653` (`sha256:c56f277b…`, merge `91f5653`, approve `8985793`), deploy `90beca5`
+  (только строка `image:` backend). После старта: `books` → `v2 | 3`, `column_default` = `'v2'::text`,
+  лог `[ORCH-V2] enabled: migration applied, sweeper + local runner started`; ошибок нет.
+- **Тесты:** `scripts/test-backend.sh` теперь для пакета, объявившего `test:gen`, запускает и `npm test`,
+  и `npm run test:gen` (gen-сьют пакета — 87 кейсов, миграции на реальном PG, свежая схема на кейс);
+  прогон: 4358 passing / 29 pending / 0 failing, `packages-published` зелёный, пакеты 10/10.
+- Отчёт: `reports/orchestration-default-v2-release.md`.
+
 ## 2026-11-26
 
 ### Release — идемпотентный bootstrap книги (backend `deploy-ee1a331`, web, Android 0.3.4)

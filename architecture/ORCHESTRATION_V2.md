@@ -451,3 +451,39 @@ gzip-JSON {worker_id, seq_from, seq_to, lines: [{ts, level, msg}]}
 слой `audio`, не сценовый ассет) и команда `kind: 'voice_reference'` (`scope.voice`, layer-config не применяется);
 аудио-чанки получают закреплённые референсы как `input_files`. Нормативно — `architecture/VOICE_REFERENCES.md` §6.4, §7.3.
 
+
+---
+
+## Дополнение 2026-11-27: v2 — оркестрация по умолчанию
+
+Решение владельца 26.11: legacy-оркестрация не нужна, все книги — с нуля на v2. Код legacy, его таблицы и
+эндпоинты на этом шаге **не удалялись** — это этап 4 (§12; инвентарь и порядок удаления —
+`reports/2026-11-26/legacy-removal-recon.md`).
+
+**Миграция `006-default-v2`** (`@animastor/orchestration` **1.4.2**, `src/gen/sql/006-default-v2.js`,
+следующая после `005-voice-reference`):
+
+```sql
+ALTER TABLE books ALTER COLUMN orchestration SET DEFAULT 'v2';
+UPDATE books SET orchestration = 'v2' WHERE orchestration = 'legacy';
+```
+
+- **Идемпотентна.** `SET DEFAULT` безусловен, `UPDATE` на повторе не находит строк (`books_orchestration_check`
+  из 001 допускает только `legacy|v2`); раннер (`gen/sql/index.js`) применяет все миграции на каждом старте
+  бэкенда в одной транзакции под `pg_advisory_xact_lock('animastor:gen-v2:migrate')`.
+- **001 не тронут.** На чистой базе колонка по-прежнему создаётся `DEFAULT 'legacy'` и через один оператор
+  передефолтится — истории сходятся, миграции остаются линейными.
+- **Кто пишет колонку.** Никто: `book-repo.ensureBook` (импорт, бланк, снапшот) вставляет книгу без
+  `orchestration`, поэтому новая книга берёт значение по умолчанию, а существующая переключается только
+  `UPDATE` миграции. Читатели — `book-repo.getBookOrchestration` и предикат `orchestration-v2/book-flag.js`
+  (fail-closed: нет колонки/книги → не v2; кэш на TTL).
+- **Когда применяется.** `orchestration-v2/index.js` вызывает `gen.migrate` в `start()` только если v2-хост
+  стартовал (`ORCH_V2_ENABLED=1`, `ORCH_V2_UPLOAD_SECRET` ≥ 32 байт, ffmpeg). На проде — при первом старте
+  бэкенда с пакетом 1.4.2.
+- **Откат** — только вручную (`ALTER … SET DEFAULT 'legacy'` и `UPDATE` нужных книг); автоматической обратной
+  миграции нет.
+- **Выкатка:** backend `deploy-91f5653` (merge `91f5653`, approve `8985793`); после старта `books` → `v2 | 3`,
+  `column_default` = `'v2'::text`, лог `[ORCH-V2] enabled: migration applied…`.
+- **Тесты:** `test/gen/default-v2.test.js` (пакет, `npm run test:gen`) строит до-миграционную базу из 001–005
+  в отдельной схеме: legacy-книга → `v2`, книга после миграции → `v2` через дефолт, три прогона без изменений.
+  `scripts/test-backend.sh` теперь запускает для пакета и `npm test`, и `npm run test:gen`.

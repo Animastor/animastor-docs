@@ -6,6 +6,30 @@ All notable changes to Animastor are documented here.
 
 ## 2026-11-27
 
+### Generate API v2 — этап 2 API (`ORCHESTRATION_V2.md` §11.1–11.2), паритет фронтов; ветки `feat/generate-api-v2`, не влиты
+
+- **Backend `c466ea5`:** `POST /api/v1/book/:bookId/generate` `{scope, layers, mode: "missing"|"all", client_action_id}` →
+  `{command_id, existing, summary, …}`, `POST …/generate/stop` `{command_id}` | `{layer}` | `{}`, `GET …/generate/progress`
+  (агрегат §9), `GET …/generate/stream` (SSE, свежий агрегат при подключении и переподключении) — тонкие обёртки над
+  `orchV2.*`, права — как у `/regenerate`, ошибки `{code, error}`, legacy-книга → 409 `book_not_v2`. Старые имена
+  (`/regenerate`, `cancel-worker`, `cancel-generation`, `progress-panel`) не менялись, `progress-stream` переключён на
+  внутренний слушатель.
+- **Прогресс только через PG NOTIFY** (§4.3, §9): один `LISTEN gen_progress` на процесс, раздача SSE внутри процесса
+  (`orchestration-v2/progress-hub.js`); Redis pub/sub `animastor:progress:*` для v2 не публикуется — Redis в пути
+  прогресса не участвует (тест: события приходят при недоступном Redis). Рядом с генерацией Redis остаётся у
+  `layer-config` (шаг 2) и у событий VBook/импорта (задача H).
+- **Web `85976cf`, Android `c433435` 0.3.5 (18):** две кнопки «Сгенерировать недостающее» / «Перегенерировать»
+  (подтверждение для области шире сцены), `client_action_id` на клик, `command_id`/`summary`, без `build_id`; прогресс и
+  стрим — новые эндпоинты; стоп по команде / слою / книге; Android — удалены мёртвые `resumeBootstrap`,
+  `triggerNextWindow`, `getGenerationState`, `regenerateBook(new_book)`. Паритет — `ANDROID_WEB_PARITY.md` (2026-11-27,
+  PARITY; общие ограничения до задачи H).
+- **Тесты:** backend `tests/orch-v2-generate-api.test.js` 16 кейсов, `scripts/test-backend.sh --install-packages`
+  4374 passing / 29 pending / 0 failing, пакеты 10/10; web vitest 470/0, `tsc` OK, `vite build` OK; Android
+  `testDebugUnitTest` 378/0, `assembleDebug` + `lintVitalRelease` OK.
+- **Не делалось:** удаление legacy-кода и роутов (шаг 5), `layer-config` в PG (шаг 2), слой `vbook` (задача H),
+  npm publish, выкатка. Пакет `@animastor/orchestration` не менялся (1.4.2).
+- Отчёт: `reports/generate-api-v2.md`.
+
 ### Release — все книги на orchestration v2 по умолчанию (миграция `006-default-v2`, backend `deploy-91f5653`)
 
 - **Решение владельца (26.11):** legacy-оркестрация не нужна, все книги — с нуля на v2. Код legacy не удалялся —

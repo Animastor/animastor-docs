@@ -6,6 +6,16 @@
 >
 > **Source:** Original analysis `docs-claude/01_System_Map.md`.
 > **Status:** Current as of 2026-07-06.
+>
+> **2026-11-28 — legacy-оркестрация удалена (`architecture/ORCHESTRATION_V2.md` §12 этап 4, ветки
+> `chore/remove-legacy-orchestration`).** Разделы ниже про tick-планировщик, dispatch engine, lease/quota,
+> FSM аудио/видео, `POST /gpu/task/result` → `task-handler`, per-asset Redis-состояния и таблицы
+> `asset_states` / `generation_tasks` / `output_manifests` / `cache_entries` / `asset_dependencies` /
+> `reconciliation_events` описывают **удалённый** контур (история). Текущая генерация — оркестрация v2:
+> PG `gen_commands` / `gen_jobs`, `@animastor/orchestration` 2.0.0 (только `gen`), воркер 3.0.0 тянет работу через
+> хаб v0.4.0 (`/v3/*` → backend `/internal/gen/*`), прогресс — PG `NOTIFY gen_progress`. Нормативно —
+> `architecture/ORCHESTRATION_V2.md`.
+>
 > Updates:
 > - Agent pipeline: enrichment step removed (enrichment moved to stepCreateScenes), coreference removed, unit.participants removed.
 > - Storage: locations.json, voices.json, bible.country/epoch.
@@ -38,7 +48,7 @@ Deployment (`docker-compose.yml`): `postgres` (PG 16), `redis` (7, persisted vol
 | Subsystem | Location | Role |
 |---|---|---|
 | **Backend / API** | `backend/src/backend.cjs` + `routes/*` | Express server, DI for all services, REST API, generation orchestration, startup-resume/recovery. |
-| **Orchestration / Runtime** | `backend/src/runtime/*`, `backend/src/orchestration/*` | Tick-based scheduler (5s), dispatch engine (lease/quota), scene orchestrator + callbacks, scene window. |
+| **Orchestration (v2)** | `packages/animastor-orchestration` (`gen`), `backend/src/orchestration-v2/*` | PG-only commands / claim / acceptance / sweeper / progress (`ORCHESTRATION_V2.md`). The legacy tick scheduler / dispatch engine / scene orchestrator are removed (2026-11-28). `backend/src/runtime/` keeps `worker-health`, `worker-lanes`, `job-schema`. |
 | **Agent Service (AI Pipeline)** | `backend/src/services/agent-service.js` + `agent/` | Pipeline decomposed into submodules: bootstrap, pipeline-runner, pipeline-steps, coreference (stub). |
 | **AI Chat** | `backend/src/services/chat-engine.cjs` | Tool-based assistant (chat/edit/director/import modes). |
 | **Generators** | `backend/src/{audio,image,video}/*` | ComfyUI workflow assembly and task submission to GPU. |
@@ -52,8 +62,7 @@ Deployment (`docker-compose.yml`): `postgres` (PG 16), `redis` (7, persisted vol
 | **Worker Auth** | `backend/src/services/worker-auth.js`, `worker-repo.js` | FAIL CLOSED credential model: `wrk.*` tokens, Redis mirror, PG authoritative. Private/Share/System modes (PW-4). |
 | **Admin System** | `backend/src/routes/admin-routes.cjs`, `services/system-ai.js` | Platform-level admin: AI kill switch, system provider, requireAdmin guard. |
 | **Workspace AI Provider** | `backend/src/services/workspace-ai-provider.js` | Per-workspace AI provider (AES-256-GCM encrypted keys), connection testing, fallback chain. |
-| **Audio/Video Orchestrators** | `services/audio-orchestrator.js`, `services/video-orchestrator.js` | Phase machines for merge orchestration (WAITING_CHUNKS → MERGING → DONE). |
-| **Entity Cleanup** | `services/entity-cleanup.cjs` | Deep cleanup across PG/Redis/FS/GPU-hub for scene/unit deletion. |
+| **Entity Cleanup** | `services/entity-cleanup.cjs` | Deep cleanup across PG / Redis chunk records / FS for scene/unit deletion (no GPU-hub / lease legs since 2026-11-28). |
 | **Metrics** | `backend/src/metrics/prometheus` | Prometheus metrics endpoint (`/metrics`). |
 
 **Subsystems underrepresented in overview documentation but present in code:**
@@ -91,7 +100,11 @@ AI provider: configured via `AI_API_BASE_URL` (default: OpenRouter, in docker-co
 Default model: `qwen3-32b`. Single key: `OPENROUTER_API_KEY`.
 Model JSON responses are stripped of CoT (`<think>`/`<reasoning>`) before parsing (`ai-service.parseJsonResponse`).
 
-### 3.2 Asset Generation (Per-Asset Parallel Dispatch)
+### 3.2 Asset Generation (Per-Asset Parallel Dispatch) — removed 2026-11-28 (history)
+
+> The cycle below is the deleted legacy orchestration. Current flow: `POST /book/:id/generate` → `gen_commands` /
+> `gen_jobs` → worker claim (`/internal/gen/claim` via hub `/v3`) → PUT result → one-transaction acceptance
+> (`ORCHESTRATION_V2.md` §6–§9).
 
 The scene's linear FSM **has been removed** (v2.1.0); the canonical source of truth is independent per-asset states `audio` / `image` / `video`:
 
@@ -129,18 +142,20 @@ Truth is intentionally split across three stores (this is explicitly documented 
 
 30+ tables (`storage/postgres/schema.js`). Key groups:
 - **Book/structure:** `books`, `book_snapshots`, `scenes`, `image_units`, `storyboard_elements`, `audio_layers`, `book_source`.
-- **Generation state:** `scene_assets` (status: pending/ready/stale/failed/missing/placeholder + versions `scene_content_version`, `scene_audio_config_version`), `asset_states`, `asset_dependencies`, `generation_tasks`, `output_manifests`, `book_generation_sessions`, `workers`, `reconciliation_events`.
+- **Generation state:** `scene_assets` (status: pending/ready/stale/failed/missing/placeholder + versions `scene_content_version`, `scene_audio_config_version`), `gen_commands`, `gen_jobs`, `gen_command_jobs`, `gen_command_skips`, `book_layer_config`, `book_generation_sessions` (VBook, until task H), `workers`. (`asset_states`, `asset_dependencies`, `generation_tasks`, `output_manifests`, `reconciliation_events`, `cache_entries`, `generation_cancellations`, `iu_image_*` — dropped 2026-11-28.)
 - **AI agent:** `agent_sessions`, `agent_steps`, `agent_conversations`, `agent_messages`.
 - **Chat:** `chat_sessions`, `chat_messages`, `ai_chat_sessions`.
-- **Other:** `users`, `cache_entries`, `book_events`.
+- **Other:** `users`, `book_events`.
 
 ### 4.2 Redis — runtime state (persisted via volume)
 
 ~30+ key families under the `animastor:` prefix. Key ones:
-- GPU queues: `animastor:queue:{audio|image|video}`, `animastor:running`, `animastor:result:*`, dedup `animastor:job:*`.
-- Scene state: `animastor:asset-state:*` (per-asset, canonical, HASH), `animastor:iu-progress:*`, `animastor:chunk:*`, `animastor:chunks:*`.
-- Dispatch/coordination: `animastor:dispatch-lease:*`, `animastor:dispatch-completed:*`, `animastor:runtime:*`, `animastor:*-lock:*`, `animastor:worker:heartbeat:*`.
-- Config/scope: `animastor:gen-scope:*`, `animastor:active-scenes`. Per-book layer-config is not in Redis since 2026-11-27 — PG `book_layer_config` (`architecture/ORCHESTRATION_V2.md` §11.1).
+Since 2026-11-28 (этап 4) Redis holds no orchestration state. What remains (`backend/tests/architecture/redis-registry.js`):
+- Workers: `animastor:worker:heartbeat:*`, `animastor:gpu-hub:workers`, `animastor:worker-auth`, `animastor:ai-connector:hb:*`.
+- Chunk records (import → player): `animastor:chunk:*`, `animastor:chunks:*`, `animastor:book-scenes:*`.
+- VBook (until task H): pub/sub `animastor:progress:*`, `animastor:cancelled-workers:*`, `animastor:bootstrap-lock:*`, `animastor:vbook-scene-idx:*`.
+- Other: `animastor:pending-purge*`, `animastor:prompt-profiles`, `animastor:video-book-merge-lock:*`, `animastor:cleanup-lock`.
+- The legacy families (queues, `asset-state`, leases, `runtime:*`, `active-scenes`, idempotency/fence, …) are removed once by `scripts/purge-legacy-redis.cjs`.
 
 ### 4.3 Filesystem
 

@@ -92,9 +92,22 @@
 
 - `scene_assets` — остаётся как «что лежит на диске»: пишется только транзакцией приёма (§7) и созданием заглушек при импорте. Добавить `job_id`, `sha256`. Ключ — сцена × тип: `ready` + `sha256` + `job_id` ставятся только склейкой (`audio_merge` / `video_merge`; для картинок склейки нет — приём IU, закрывающий набор IU сцены, §13 п.9); готовые части (чанк, IU, группа) — в `metadata.gen_parts[unit_key]` (с `part_hash`, если планировщик его дал). Статусы: `placeholder | pending | ready | stale` (`pending` — часть работ сцены принята, набор не закрыт, §13 п.9). Убрать NULL-build дубли (409 строк) миграцией.
 - `layer-config` — **в PG (`book_layer_config`), сделано 2026-11-27** (ветка `feat/layer-config-pg`, backend `3a404c9` + `e98817e`, `@animastor/orchestration` 1.4.4 опубликован, backend `^1.4.4`): единственное хранилище — таблица хоста `book_layer_config`; Redis-ключи `animastor:layer-config:*` не читаются и не пишутся, фаза C6 reconcile удалена. Контракт — §11.1 «layer-config в PG».
-- Удаляются после этапа 4: `generation_tasks`, `asset_states`, `generation_cancellations`, `iu_image_fence_reservations`, `iu_image_pointers` (если versioned IU не включён), `reconciliation_events`; все генерационные ключи Redis (разведка §4.5), кроме pub/sub прогресса — его заменяет PG `LISTEN/NOTIFY` (§9), так что Redis генерации не нужен вовсе.
+- **Удалены на этапе 4 (шаг 7, сделано 2026-11-28, ветки `chore/remove-legacy-orchestration`, не влиты):** таблицы
+  `generation_tasks`, `asset_states`, `generation_cancellations`, `reconciliation_events`, `cache_entries`,
+  `asset_dependencies`, `output_manifests`, `iu_image_fence_reservations`, `iu_image_pointers` — хост-миграция
+  `dropLegacyOrchestrationTables()` (`backend/src/storage/postgres/schema.js`). Перед `DROP` каждая таблица
+  проверяется: «живая» строка (`generation_tasks` queued/running, `asset_states` queued/generating,
+  `output_manifests` building, любая строка pointer/fence IU) останавливает миграцию ошибкой
+  `legacy_tables_not_empty`, ничего не удаляется. Книги и `book_generation_sessions` (VBook, задача H) не трогаются.
+  Генерационные ключи Redis удаляет разовый скрипт `scripts/purge-legacy-redis.cjs` (dry-run по умолчанию). **Итог
+  §4.3 по Redis:** «Redis генерации не нужен вовсе» для оркестрации v2 выполнено (её состояние и прогресс — в PG),
+  но Redis остаётся у того, что не является работой оркестрации: pub/sub `animastor:progress:*` событий VBook
+  (`/progress-stream`, до задачи H), сигнал отмены VBook `animastor:cancelled-workers:*`, `bootstrap-lock:*`, записи
+  чанков `chunk:*` / `chunks:*` / `book-scenes:*` (пишет импорт, читает плеер), heartbeat'ы и реестр воркеров хаба,
+  `worker-auth`, `pending-purge*`. Колонка `books.orchestration` (DEFAULT `'v2'`, CHECK) осталась следом миграции;
+  её никто не читает.
 - **Сделано 2026-11-27 (этап 2 API, backend `c466ea5`, web `85976cf`, android `c433435`):** прогресс генерации идёт **только через PG `NOTIFY gen_progress`** — один `LISTEN` на процесс backend, раздача SSE-клиентам книги внутри процесса (`orchestration-v2/progress-hub.js`, §9). v2 больше не публикует в Redis pub/sub `animastor:progress:*`; **Redis в пути прогресса генерации не участвует** (проверено тестом: события `/generate/stream` и `/progress-stream` приходят при недоступном Redis). Оставшиеся касания Redis рядом с генерацией — не прогресс: события VBook/импорта (`pipeline-runner`, bootstrap) в старом канале `/progress-stream` — не работа оркестрации, уходят с задачей H. `layer-config` (чтение при создании команды и в `isLayerEnabled`) с 2026-11-27 читается из PG (§11.1), Redis в нём не участвует.
-- Пять таблиц, в которые никто не пишет (разведка §3.3: `asset_states`, `cache_entries`, `asset_dependencies`, `reconciliation_events`, `output_manifests`), — удалить на этапе 2.
+- Пять таблиц, в которые никто не пишет (разведка §3.3: `asset_states`, `cache_entries`, `asset_dependencies`, `reconciliation_events`, `output_manifests`), — удалены вместе с остальными на этапе 4 (шаг 7, см. выше).
 
 ## 5. Компоненты
 
@@ -437,11 +450,37 @@ web `api/client.ts`, Android `PollRequests.kt`) больше не перечис
 
 **Оставлено до задачи H** (VBook как слой `generate`): `GET /book/:id/progress-stream` (события VBook / анализа /
 импорта), `POST /book/:id/cancel-worker` (стоп VBook / обложки, `{task_id}` команды), `POST /book/:id/bootstrap`,
-`/bootstrap-next-window`, `/resume-bootstrap`, `/trigger-next-window`. **До шага 6** (протокол 2 хаба / воркера):
-`GET /worker/counts`, `POST /gpu/task/result`, `POST /gpu/task/error`. Также не трогались: `src/legacy` пакета
-оркестрации и хост-сервисы legacy (шаг 7), read-repair в `GET /book` (пакет editor).
+`/bootstrap-next-window`, `/resume-bootstrap`, `/trigger-next-window`. `GET /worker/counts` остаётся (живой, без
+пакета с шага 4).
 
-- Этап 3: `vbook` как слой `generate` (задача H) — затем удаляются `progress-stream`, `cancel-worker`, `bootstrap*`.
+**Шаги 4 и 7 разведки — сделано 2026-11-28** (ветки `chore/remove-legacy-orchestration` в backend, web, android,
+docs; не влиты; отчёт `reports/2026-11-28/remove-legacy-orchestration.md`).
+
+- *Шаг 4 — развязка:* `workerHealth` перенесён в хост (`backend/src/runtime/worker-health.js`); предикат
+  `isV2Book` / `orchestration-v2/book-flag` убран — v2-ветки работают без условия, legacy-ветки удалены; `409
+  book_not_v2` больше нет (ни в хосте, ни в ядре `gen.createCommand`). v2 ничего не импортирует из `src/legacy`
+  (`retryPolicy` — `gen.defaults`, таксономия ошибок legacy v2 не нужна).
+- *Шаг 7 — удаление:* `@animastor/orchestration` **2.0.0** — только `gen`, `src/legacy/` удалён; хост без портов
+  O-2…O-10, host-bindings, seams, runtime-loop / reconcile, `task-handler`, FSM аудио/видео, `gpu-retry-policy`,
+  `gpu-dispatcher` (протокол 2), `queue-idempotency`, `state/*`, `iu-processor`, `startup-resume`. Удалены роуты
+  `POST /gpu/task/result`, `/gpu/task/error`, `POST /debug/audio/recover` и вся legacy-диагностика `/debug/runtime/*`;
+  вызовы хаба `DELETE /queue/clear` (удаление книги, очистка кэша) убраны. `GET /book/:id/source-chapters` удалён
+  (вызовов в web и Android нет — проверено grep). Read-repair из `GET /book` убран (`@animastor/editor` 0.6.0),
+  `GET /chunk/:id` плеера без legacy-передиспетчеризации (`@animastor/player` 0.1.6), инсталлятор 0.2.12 без
+  `job-protocol-v2.cjs` в `WORKER_CONFIG_FILES`. Пакеты не опубликованы — готовы к публикации (порядок — отчёт §9).
+- Общее с v2 не тронуто: `audio/generation.js`, `pipeline.js`, `segments.js`, `ffmpeg.js`, `placeholder-marker.js`,
+  `image/registry.js` (pointer-читатели отвечают как при выключенном `IU_IMAGE_VERSIONED`), `video/*`,
+  `services/placeholder-audio.js` (заглушки при импорте), `gen-scope.js`, `progress-pubsub.cjs`. Формулы IU-RECALC —
+  в `orchestration-v2/iu-timings.js`. Из удалённых файлов вынесено живое: `runtime/worker-lanes.js`,
+  `helpers/chunk-store.cjs`, `services/book-snapshot.cjs`, `services/window-sessions-startup.js`,
+  `image/iu-workflow.js`.
+- Фронты (паритет): убран индикатор «книга изменена» (`dirtySummary`) — решение владельца 28.11; отрисовка строк
+  `blocked` / `interrupted` (состояния legacy-реестра задач) убрана, остановленная строка — только `failed`.
+  Android 0.3.8 (21).
+
+- Этап 3: `vbook` как слой `generate` (задача H) — затем удаляются `progress-stream`, `cancel-worker`, `bootstrap*`,
+  `window-generator.cjs`, `book_generation_sessions` / `gen-session-repo`, Redis `cancelled-workers:*`,
+  `progress:*`, `bootstrap-lock:*`.
 
 ## 12. Этапы
 
@@ -481,6 +520,12 @@ web `api/client.ts`, Android `PollRequests.kt`) больше не перечис
 - **2b-API** (2026-11-27) — **API §11.1 + фронты (паритет)**: `/generate`, `/generate/stop`, `/generate/progress`, `/generate/stream` поверх `orchV2.*`; прогресс только через PG NOTIFY (in-process хаб, §9), Redis pub/sub для v2 не публикуется; web и Android переведены на новые эндпоинты (две кнопки, `client_action_id`, стоп трёх видов). backend `c466ea5`, web `85976cf`, android `c433435`; ветки `feat/generate-api-v2`, не влиты, без выкатки. Тесты: backend `tests/orch-v2-generate-api.test.js` (16), полный прогон 4374/29 pending/0; web vitest 470/0; Android `testDebugUnitTest` 378/0, `lintVitalRelease` OK. Выкачено 2026-11-27 (backend `deploy-0ad9d70`, web `474f78d`, APK 0.3.5). Отчёты `reports/2026-11-27/generate-api-v2.md`, `…/generate-api-v2-release.md`.
 
 - **Шаг 6 этапа 4** (2026-11-28) — **протокол 2 удалён в хабе и воркере**: воркер **3.0.0** (только протокол 3), хаб **v0.4.0** (без `/task*`, `/beacon`, `/queue/clear` и их Redis-семейств), перепин бандла + манифесты установки без `job-protocol-v2.cjs`. Ветки `chore/remove-protocol-v2` (worker, gpu-hub, backend — только манифесты, docs), не влиты, без выкатки. Сквозной прогон: backend (main) + настоящий хаб ветки + бандл 3.0.0 + мок ComfyUI — аудио от `/generate` до `done`, `/generate/stop` → `/interrupt` (`reports/2026-11-28/remove-protocol-v2-e2e/`). Подробно — §8.3, §8.4 «Как сделано (этап 4, шаг 6)». Отчёт: `reports/2026-11-28/remove-protocol-v2.md`.
+- **Шаги 4 и 7 этапа 4** (2026-11-28) — **legacy-оркестрация удалена**: развязка (`workerHealth` в хост, без
+  `isV2Book` / `book_not_v2`) и удаление (`@animastor/orchestration` 2.0.0 — только `gen`; хост-код legacy, роуты
+  `/gpu/task/*`, вызовы `/queue/clear`, read-repair `GET /book`; таблицы §4.3 — миграцией с проверкой; Redis —
+  скриптом `purge-legacy-redis.cjs`; фронты — индикатор «книга изменена» и строки blocked/interrupted). Ветки
+  `chore/remove-legacy-orchestration`, не влиты, без выкатки и npm publish. **Этап 4 сделан, кроме задачи H**
+  (VBook как слой `generate`, §11.3). Подробно — §4.3, §11.3. Отчёт: `reports/2026-11-28/remove-legacy-orchestration.md`.
 
 Задача G и крупные правки старой оркестрации заморожены (решение 05.11). Хвосты todo, которые закрываются v2: G, этапы 2–3 защиты /regenerate, retry policy соседних job, ложный «онлайн» воркера, `/queue/clear` всех, NULL-дубли `scene_assets`, D (счётчики панели).
 

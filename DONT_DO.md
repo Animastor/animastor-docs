@@ -59,11 +59,12 @@ This file contains a list of changes that previously caused critical regressions
 - `d6ac6c1` — added helmet and express-rate-limit
 - Reason: helmet may block headers expected by the Android client
 
-### 9. graceful-shutdown with redis.quit() without checking active operations
-**Forbidden:** Calling `redis.quit()` in graceful-shutdown without guaranteeing no active operations.
+### 9. ~~graceful-shutdown with redis.quit() without checking active operations~~ — снято 2026-11-28
+Пункт относился к legacy-оркестрации: её активные генерации жили в Redis (lease, FSM, реестр задач). С этапа 4
+(`architecture/ORCHESTRATION_V2.md` §12) состояние генерации — только в PG (`gen_commands` / `gen_jobs`), shutdown
+сначала останавливает оркестрацию v2 (`orchV2Host.stop()`), затем закрывает Redis и PG.
 
-- `d6ac6c1` — graceful-shutdown with redis.quit()
-- Reason: may interrupt active generations and cause data loss
+- (история: `d6ac6c1` — graceful-shutdown with redis.quit())
 
 ### 10. Changing HTTP logging level from BODY to HEADERS
 **Forbidden:** Changing `HttpLoggingInterceptor.Level.BODY` to `LEVEL.HEADERS` in RetrofitClient.kt.

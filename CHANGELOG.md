@@ -6,6 +6,27 @@ All notable changes to Animastor are documented here.
 
 ## 2026-11-28
 
+### Legacy-оркестрация удалена — шаги 4 и 7 этапа 4 (ветки `chore/remove-legacy-orchestration`, не влиты)
+
+- **Развязка (шаг 4):** `workerHealth` — в хосте backend (`src/runtime/worker-health.js`), `GET /worker/counts` без
+  пакета; `isV2Book` / `book-flag` и `409 book_not_v2` убраны везде (v2-ветки без условия). Колонка
+  `books.orchestration` осталась следом миграции.
+- **Удаление (шаг 7):** `@animastor/orchestration` **2.0.0** — только `gen` (`src/legacy/` удалён); хост-код legacy
+  (адаптеры портов, `task-handler`, FSM аудио/видео, `gpu-retry-policy`, `audio-recovery`, `stage-cancellation`,
+  `runtime-loop`, `gpu-dispatcher`, `queue-idempotency`, `redis-helpers`, `state/*`, `iu-processor`,
+  `startup-resume`, репозитории `task` / `generation-cancel` / `iu-image-pointer`); роуты `POST /gpu/task/result`,
+  `/gpu/task/error`, `POST /debug/audio/recover`, `/debug/runtime/*`; вызовы хаба `DELETE /queue/clear`.
+  `@animastor/editor` 0.6.0 (без read-repair в `GET /book`), `@animastor/player` 0.1.6, `@animastor/installer` 0.2.12 —
+  не опубликованы, готовы к публикации.
+- **PG:** миграция удаляет `generation_tasks`, `asset_states`, `generation_cancellations`, `reconciliation_events`,
+  `cache_entries`, `asset_dependencies`, `output_manifests`, `iu_image_fence_reservations`, `iu_image_pointers`; живая
+  строка → ошибка `legacy_tables_not_empty`. **Redis:** `scripts/purge-legacy-redis.cjs` (dry-run по умолчанию).
+- **Фронты (паритет):** убран индикатор «книга изменена» (решение владельца 28.11) и отрисовка строк
+  `blocked` / `interrupted`; Android 0.3.8 (21).
+- **Docs:** `architecture/ORCHESTRATION_V2.md` §4.3, §11.3, §12 (этап 4 сделан, кроме задачи H);
+  `DONT_DO.md` — пункт 9 снят; `01-overview/SYSTEM_MAP.md` — баннер и разделы данных.
+  Отчёт: `reports/2026-11-28/remove-legacy-orchestration.md`.
+
 ### Протокол 2 удалён в хабе и воркере — шаг 6 этапа 4 (ветки `chore/remove-protocol-v2`, не влиты)
 
 - **Воркер 3.0.0** (animastor-worker `0d979ff`): только протокол 3. Удалены `WORKER_PROTOCOL`, `job-protocol-v2.cjs`,

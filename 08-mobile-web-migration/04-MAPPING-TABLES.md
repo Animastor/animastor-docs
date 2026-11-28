@@ -118,12 +118,15 @@ Endpoint categories from `BackendApi.kt` (migrated 1:1):
 
 | Group | Example paths | Used by screens |
 |---|---|---|
-| Book | `/book/{id}` (GET/PUT/DELETE), `/book/{id}/import`, `/cover`, `/metadata`, `/export`, `/download`, `/storyboard`, `/audio`, `/diff`, `/regenerate`, `/cancel-generation`, `/cancel-worker`, `/snapshot`, `/reorder`, `/cache`, `/status`, `/assets-state`, `/layer-config`, `/bootstrap*`, `/resume-bootstrap`, `/trigger-next-window`, `/progress-panel`, `/generation-state`, `/text-index`, `/preliminary`, `/chapters-summary`, `/lazy-parse*`, `/source`, `/agent-status`; **`/books`** (recent books list on server — session recovery) | File, Generate, Edit, Settings |
+| Book | `/book/{id}` (GET/PUT/DELETE), `/book/{id}/import`, `/cover`, `/metadata`, `/export`, `/download`, `/storyboard`, `/audio`, `/diff`, `/generate` (+ `/stop`, `/progress`, `/stream`), `/cancel-worker`, `/snapshot`, `/reorder`, `/cache`, `/status`, `/assets-state`, `/layer-config`, `/bootstrap*`, `/resume-bootstrap`, `/trigger-next-window`, `/text-index`, `/preliminary`, `/chapters-summary`, `/lazy-parse*`, `/source`, `/agent-status`; **`/books`** (recent books list on server — session recovery) | File, Generate, Edit, Settings |
 | Scene (timeline) | `/scene/{book}/{ch}/{sc}/audio\|image\|video\|storyboard\|status\|waveform\|timings` (GET; timings PUT) | Play, Edit |
 | Chunk (legacy) | `/chunk/{id}`, `/chunk/{id}/audio\|image\|video\|storyboard` | legacy paths |
 | IU | `/iu-image/{book}/{ch}/{sc}/{iu}`, `/preview/{book}/{ch}/{sc}/{iu}` | Play, Edit |
 | AI | `/ai/chat`, `/ai/sessions` (GET/POST), `/ai/sessions/{id}` (PATCH/DELETE), `/ai/sessions/{id}/messages` | AiAssistant |
 | Worker | `/worker/counts` | Generate, WorkerSettings |
+
+> 2026-11-28: `/regenerate`, `/cancel-generation`, `/progress-panel`, `/generation-state` and the other legacy
+> endpoints were removed (`architecture/ORCHESTRATION_V2.md` §11.3); generation goes through `/book/{id}/generate*`.
 | Connectors | `/connectors`, `/connectors/{name}` (+ `/compatibility`, `/raw`, `/parameters`, `/status`, `/bindings`), `/connectors/validate\|reload\|entities\|grouped\|profiles` | DeveloperView, Settings |
 | Workflows | `/workflows`, `/workflows/{name}` (+`/hash`), `/workflows/summary` | WorkflowManager, WorkflowDetails |
 

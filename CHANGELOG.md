@@ -6,6 +6,22 @@ All notable changes to Animastor are documented here.
 
 ## 2026-11-28
 
+### Удалены legacy-эндпоинты генерации и импорта (ветки `chore/remove-legacy-endpoints`, не влиты)
+
+- **Backend:** удалены `POST /api/v1/generate`, `POST /book/:id/generate-next`, `POST /book/load-vbook`,
+  `POST /book/import-txt`, `POST /book/import-text`, `POST /book/:id/recover-placeholders`,
+  `GET /book/:id/generation-state`, `GET /worker/status`, `POST /book/:id/regenerate`,
+  `POST /book/:id/cancel-generation`, `GET /book/:id/progress-panel` (с v2-обработчиками) — ответ 404; файлы
+  `progress-panel.cjs`, `recovery-routes.cjs`, `regenerate-hub-sweep.cjs`. Решение владельца 27.11: APK ≤ 0.3.4 не
+  поддерживаются.
+- **Оставлено до задачи H:** `progress-stream`, `cancel-worker`, `bootstrap`, `bootstrap-next-window`,
+  `resume-bootstrap`, `trigger-next-window`; до шага 6 — `worker/counts`, `/gpu/task/*`.
+- **Фронты:** no-store без `progress-panel` / `generation*` (backend, web, Android); классификатор отказа старта — только
+  форма `/generate`; web — удалены `RegenerateRequest/Response`; Android 0.3.7 (20). UI не менялся (правило 0
+  `ANDROID_WEB_PARITY.md` — запись паритета не нужна).
+- Нормативно — `architecture/ORCHESTRATION_V2.md` §11.3; таблица API `08-mobile-web-migration/04-MAPPING-TABLES.md` §4.
+  Отчёт: `reports/2026-11-28/remove-legacy-endpoints.md`.
+
 ### Release — layer-config в PG (backend `deploy-5dc53a7`, `@animastor/orchestration` 1.4.4)
 
 - **Merge:** backend `5dc53a7` (ветка `3a404c9` + `e98817e` — `^1.4.4` из реестра, заглушка `restoreFromBooks`

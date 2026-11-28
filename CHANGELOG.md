@@ -22,6 +22,22 @@ All notable changes to Animastor are documented here.
 - Нормативно — `architecture/ORCHESTRATION_V2.md` §11.3; таблица API `08-mobile-web-migration/04-MAPPING-TABLES.md` §4.
   Отчёт: `reports/2026-11-28/remove-legacy-endpoints.md`.
 
+### Release — legacy-эндпоинты удалены (backend `deploy-2f2e955`, web `385ebc2`, Android 0.3.7 (20))
+
+- **Merge:** backend `2f2e955` (ветка `aa9df09`; approve `45a36ae`), web `385ebc2`, Android `894b909`,
+  docs `acf42e8`; deploy `380eca9` (только строка `image:` backend). `main` до merge не сдвигался ни в одном репо.
+- **Образ:** `ghcr.io/animastor/animastor-backend@sha256:e467a763f6207934ad1cdb9d784591f56d3176abc3de06165df5ffeccdae9d1b`,
+  revision = merge `2f2e955`; 45/45 изменённых файлов в образе совпадают с исходниками по sha256, удалённые файлы
+  (`progress-panel.cjs`, `recovery-routes.cjs`, `regenerate-hub-sweep.cjs`) отсутствуют.
+- **Проверки на проде** (только чтение): `/health` 200, `restarts 0`; в таблице роутов живого процесса 204 записи,
+  ни одного legacy-маршрута, `/generate`, `/generate/progress`, `/generate/stream`, `/worker/counts` смонтированы;
+  `GET /worker/status` → 404 `Cannot GET`; анонимные `POST /book/:id/regenerate` и `GET /book/:id/progress-panel` →
+  **401 `login_required`** (глобальный `requireIdentityForWrites` до роутера — для любого `/api/v1/book/*`, не гард
+  книги), `GET /book/:id/generate/progress` → 401 (маршрут жив); в логе с 12:22:50Z ошибок нет.
+- **Redis:** строк в `book_layer_config` на момент проверки 0, поэтому два ключа `animastor:layer-config:*`
+  не удалялись (условие — наличие и совпадение строк — не выполнено).
+- Отчёт: `reports/2026-11-28/remove-legacy-endpoints-release.md`.
+
 ### Release — layer-config в PG (backend `deploy-5dc53a7`, `@animastor/orchestration` 1.4.4)
 
 - **Merge:** backend `5dc53a7` (ветка `3a404c9` + `e98817e` — `^1.4.4` из реестра, заглушка `restoreFromBooks`

@@ -6,6 +6,44 @@ All notable changes to Animastor are documented here.
 
 ## 2026-11-28
 
+### Протокол 2 удалён в хабе и воркере — шаг 6 этапа 4 (ветки `chore/remove-protocol-v2`, не влиты)
+
+- **Воркер 3.0.0** (animastor-worker `0d979ff`): только протокол 3. Удалены `WORKER_PROTOCOL`, `job-protocol-v2.cjs`,
+  `tools/sync-protocol.cjs`, `GET /task/next`, `POST /task/result`, `POST /task/error`, `runV2Task`, `POST /beacon`.
+  Лог старта `Protocol: 3`; маркеры инсталлятора «Hub heartbeat accepted — worker is ONLINE» / «Beacon failed» теперь
+  пишет `/v3/beacon`. Тесты 97/0.
+- **Хаб v0.4.0** (animastor-gpu-hub `938bb38` — перепин, `50feded` — удаление): `POST /task`, `GET /task/next`,
+  `POST /task/result`, `POST /task/error`, `POST /beacon`, `DELETE /queue/clear` → `404`; Redis-семейства протокола 2
+  и пересылка в backend `/gpu/task/*` удалены, `@animastor/contracts` убран; `/v3/beacon` пишет реестр
+  `gpu-hub:workers`, `/health` → `{gpus}`. Следующий релизный тег — `v0.4.0`. Тесты 46/0.
+- **Бандл:** `artifacts.lock.json` — воркер 3.0.0; install-manifests из animastor-backend `8ee3b8c` (ветка,
+  изменены только три манифеста: без `job-protocol-v2.cjs` в `worker_bundle.files`). Решение владельца 28.11:
+  правка манифестов — веткой в backend, код backend не трогать.
+- **Backend** не менялся (`/gpu/task/*`, task-handler — шаг 7).
+- **Сквозной прогон:** backend + настоящий хаб ветки + бандл 3.0.0 + мок ComfyUI — аудио от `/generate` до `done`;
+  `/generate/stop` → cancel в `/v3/beacon` → `/interrupt`, PUT нет (`reports/2026-11-28/remove-protocol-v2-e2e/`).
+- Нормативно — `architecture/ORCHESTRATION_V2.md` §8.3, §8.4 («Как сделано (этап 4, шаг 6)», установка воркера 3.0.0),
+  §12; баннеры «historical» в `GPU_HUB_CONTRACT.md` (§16 обновлён) и `JOB_PROTOCOL_V2.md`.
+  Отчёт: `reports/2026-11-28/remove-protocol-v2.md`.
+
+### Release — протокол 2 удалён (hub v0.4.0, worker 3.0.0)
+
+- **Merge:** worker `1fee9ff` (ветка `0d979ff`), backend `ffc9a36` (ветка `8ee3b8c` + `a68824a` — `min_version` 3.0.0
+  в трёх манифестах), hub `0d8486b` (`50feded` + перепин `e29b43b`), docs — этот коммит; deploy `0553ff6`
+  (merge `6c70200`, только строка `image:` gpu-hub). `main` до merge не сдвигался ни в одном репо.
+- **Образ:** `ghcr.io/animastor/animastor-gpu-hub@sha256:ec1c206883f2b556ba88ab600a77f011363506eae97d980432fba92ec5aa37ea`
+  (`image_tag` `v0.4.0`), revision = merge `0d8486b`.
+- **Пин:** worker `1fee9ff`, backend `ffc9a36`; worker-bundle 3.0.0, 8 файлов, `20c3ff9a…`; install-manifests
+  `05ba04c5…` (min_version 3.0.0). `BACKEND_URL` хаба не менялся — решение владельца.
+- **Перед merge (прод, чтение):** `HLEN animastor:worker-auth` = 0, ключей `animastor:queue:*` нет.
+- **Проверки на проде:** `GET /gpu/health` → 200 `{"gpus":0}`; `POST /gpu/task` и `GET /gpu/task/next` → 404;
+  `GET /gpu/v3/task/next` без токена → 401; `GET /gpu/worker-bundle/sha256` → `version 3.0.0`;
+  `GET /gpu/installer/sha256` → 200 (0.2.11); лог хаба без ошибок; backend (id `7109677b…`, старт 12:22:58Z)
+  не перезапускался. Откат — revert deploy-коммита → `sha256:55659364…`.
+- **Тесты:** backend main `4314 passing / 29 pending / 0 failing`, пакеты 10/10; хаб 46/0; инсталлятор — известный
+  набор ✗, тест реального бандла после `git pull` в `src/animastor-worker` зелёный.
+- Отчёт: `reports/2026-11-28/remove-protocol-v2-release.md`.
+
 ### Удалены legacy-эндпоинты генерации и импорта (ветки `chore/remove-legacy-endpoints`, не влиты)
 
 - **Backend:** удалены `POST /api/v1/generate`, `POST /book/:id/generate-next`, `POST /book/load-vbook`,

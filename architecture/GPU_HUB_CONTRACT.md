@@ -1,5 +1,15 @@
 # GPU HUB CONTRACT — Frozen service contract
 
+> **2026-11-28 — protocol 2 removed (gpu-hub v0.4.0, ORCHESTRATION_V2 §12, legacy removal
+> step 6).** `POST /task`, `GET /task/next`, `POST /task/result`, `POST /task/error`,
+> `POST /beacon`, `DELETE /queue/clear` answer `404`; the hub no longer reads or writes the
+> Redis families `queue:*` (incl. `:ws:`/`:policy:`), `processing`, `processing-claimed`,
+> `running`, `dead-letter`, `job:*`, `result:*`, `error:*`, `stale-dispatch-signal:*` and makes
+> no `/gpu/task/*` callbacks; `@animastor/contracts` is no longer a dependency. Sections §1–§15
+> below describe that removed protocol-2 surface and are **historical**. The current contract
+> is §16 (protocol 3 relay) + the artifact / health routes; normative source —
+> `ORCHESTRATION_V2.md` §8.4.
+
 **Status:** Phase 10A contract freeze. This document records the GPU Hub's
 **actual current behavior** at baseline HEAD `ddb35bc8` — it does NOT define a
 new API. Tagged sections separate normative boundaries from current behavior
@@ -783,8 +793,8 @@ queue, running record, dedup, result copy or retries of its own.
 
 - Identity (`worker_id`, `worker_type`) only from the token; body ids are ignored. Type, mode, workspace and share policy are resolved by the backend from PG.
 - One relay attempt, timeout 10 s (`V3_RELAY_TIMEOUT_MS` config override for tests). Network error / timeout → `503 backend_unavailable`; backend `401` (hub key rejected) → `502 backend_rejected_hub_key`; `BACKEND_INTERNAL_URL` unset → `503 v3_not_configured`; `GPU_HUB_API_KEY` unset → `503 hub_api_key_not_configured`.
-- Redis writes on the v3 path: only the heartbeat key above (UI status + legacy worker counts). `/v3/task/next` and `/v3/logs` write nothing — the hub keeps no copy of log payloads (ORCHESTRATION_V2 §8.5). The v2 registry `animastor:gpu-hub:workers` is not touched (the v2 pop checks its `protocol_version`).
+- Redis writes on the v3 path: the heartbeat key above (UI status + worker counts) and, since v0.4.0, the GPU registry `animastor:gpu-hub:workers` (`/health` `{gpus}`; entries without a beacon for `GPU_TIMEOUT_MS` are pruned every 10 s). `/v3/task/next` and `/v3/logs` write nothing — the hub keeps no copy of log payloads (ORCHESTRATION_V2 §8.5).
 - Results and errors do NOT pass the hub: the worker sends `PUT upload_url` / `POST error_url` straight to the backend (public `https://animastor.org/internal/gen/jobs/…`, nginx).
-- Worker ≥ 2.4.0 (`WORKER_PROTOCOL=both`, default) asks `/v3/task/next` first and makes one v2 `/task/next` pop when v3 has nothing / answers 404 / 503; `WORKER_PROTOCOL=v2only` never calls `/v3`. Worker ≥ 2.4.1 additionally ships its ring-buffer tail to `/v3/logs` every 30 s when `WORKER_LOG_SHIP` is not `off`.
-- Guard: hub package `tests/v3-relay.cjs` (relay bodies, 503 cases, single attempt, zero Redis writes on next, one heartbeat write on beacon, `/queue/clear` without scope → 400) and `tests/v3-logs.cjs` (raw-body ceiling → 413, gunzip ceiling → 413, `lines[]` → 400, identity from the token, backend relay body/status, no Redis write).
+- Worker 3.0.0 calls only `/v3/*` (no `WORKER_PROTOCOL`, no v2 fallback, no `/beacon`). Workers 2.4.x–2.5.0 (`WORKER_PROTOCOL=both`) still get work over `/v3`, but against hub v0.4.0 their extra v2 calls get `404` (`/task/next` → no task; `/beacon` → «Beacon failed» in their log every tick) — update them to 3.0.0 by re-running the installer. `WORKER_PROTOCOL=v2only` workers get nothing. Worker ≥ 2.4.1 ships its ring-buffer tail to `/v3/logs` every 30 s when `WORKER_LOG_SHIP` is not `off`.
+- Guard: hub package `tests/v3-relay.cjs` (relay bodies, 503 cases, single attempt, zero Redis writes on next, heartbeat + registry writes on beacon, registry prune, removed protocol-2 routes → 404 with zero Redis access, no protocol-2 family in the source) and `tests/v3-logs.cjs` (raw-body ceiling → 413, gunzip ceiling → 413, `lines[]` → 400, identity from the token, backend relay body/status, no Redis write).
 

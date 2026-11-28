@@ -396,11 +396,41 @@ gzip-JSON {worker_id, seq_from, seq_to, lines: [{ts, level, msg}]}
 
 ### 11.3 Миграция и удаление
 
-**Условия шага 5 (уточнение 2026-11-27):** удалять `progress-stream` можно только после задачи H — фронты читают из него события VBook/анализа (`type: vbook | analysis | import_complete`); `cancel-worker` — тоже после H (стоп VBook/обложки). `/regenerate`, `cancel-generation`, `progress-panel` новые фронты (web `85976cf`, Android 0.3.5) не вызывают, но APK ≤ 0.3.4 вызывает — удалять после выкатки фронтов и решения владельца о старых APK.
+**Шаг 5 разведки — сделано 2026-11-28** (ветки `chore/remove-legacy-endpoints` в backend, web, android, docs; отчёт
+`reports/2026-11-28/remove-legacy-endpoints.md`). Решение владельца 27.11: APK ≤ 0.3.4 не поддерживаются, поэтому
+`/regenerate`, `cancel-generation` и `progress-panel` удалены целиком, вместе с v2-веткой.
 
-- Этап 2: новые эндпоинты; `/regenerate` — синоним `generate` (`rebuild_all:true` → `all`, иначе `missing`), `cancel-worker` / `cancel-generation` / `progress-panel` / `progress-stream` — синонимы новых для v2-книг; фронты переходят на новые.
-- Этап 3: `vbook` как слой `generate`.
-- Этап 4: удалить синонимы и эндпоинты без вызовов из фронтов (разведка §7.3): `POST /api/v1/generate`, `POST /book/:id/generate-next`, `POST /book/load-vbook`, `POST /book/import-txt`, `POST /book/:id/resume-bootstrap`, `POST /book/:id/trigger-next-window`, `POST /book/:id/recover-placeholders`, `GET /book/:id/generation-state`, `GET /worker/status` — перед удалением повторить grep по web, Android и docs. Импорт остаётся единым `POST /book/import`.
+**Удалено** (роут, его v2-обработчик в `orchestration-v2/routes.js` и всё, что стало ненужным; путь отвечает 404
+стандартным обработчиком express, тест-страж `backend/tests/removed-legacy-endpoints.test.js`):
+
+| Эндпоинт | Где был | Замена |
+|---|---|---|
+| `POST /api/v1/generate` | `routes/generation-routes.cjs` | `POST /book/import` + `POST /book/:id/generate` |
+| `POST /book/:id/generate-next` | `routes/book/generation-routes.cjs` | `POST /book/:id/generate` |
+| `POST /book/load-vbook`, `POST /book/import-txt` | `routes/book/import-routes.cjs` | `POST /book/import` (общий импортёр `services/vbook-import.cjs`) |
+| `POST /book/import-text` | `routes/book/parse-routes.cjs` | — (вызовов не было) |
+| `POST /book/:id/recover-placeholders` | `routes/book/recovery-routes.cjs` (файл удалён) | — |
+| `GET /book/:id/generation-state` | `routes/book/status-routes.cjs` | `GET /book/:id/generate/progress` |
+| `GET /worker/status` | `routes/generation-routes.cjs` | `GET /worker/counts` |
+| `POST /book/:id/regenerate` | `routes/book/generation-routes.cjs` + `orchestration-v2` `regenerate` | `POST /book/:id/generate` |
+| `POST /book/:id/cancel-generation` | `routes/book/generation-routes.cjs` + `orchestration-v2` `cancelGeneration` | `POST /book/:id/generate/stop` `{}` |
+| `GET /book/:id/progress-panel` | `routes/book/progress-panel.cjs` (файл удалён) + `orchestration-v2` `progressPanel` / адаптер `panel()` | `GET /book/:id/generate/progress` |
+
+Попутно удалено то, у чего не осталось потребителей: `services/regenerate-hub-sweep.cjs` (план зачистки хаба после
+`/regenerate`), `LEGACY_TO_SCOPE` в `orchestration-v2/routes.js`, `panel()` / `SCOPE_TO_LEGACY` в
+`orchestration-v2/progress-adapter.js`, `scene-assets-repo.getFlaggedDirtyScenes`; `import-txt` / `import-text` /
+`load-vbook` убраны из `CREATE_BOOK_SUBPATHS` (`middleware/input-guard.js`). `no-store` (backend `middleware/no-store.js`,
+web `api/client.ts`, Android `PollRequests.kt`) больше не перечисляет `progress-panel` и `generation*`. Фронты: web —
+удалены `RegenerateRequest` / `RegenerateResponse`; web и Android — классификатор отказа старта понимает только ответ
+`/generate` (`code: layer_disabled`, `disabled_layers`), Android 0.3.7 (20).
+
+**Оставлено до задачи H** (VBook как слой `generate`): `GET /book/:id/progress-stream` (события VBook / анализа /
+импорта), `POST /book/:id/cancel-worker` (стоп VBook / обложки, `{task_id}` команды), `POST /book/:id/bootstrap`,
+`/bootstrap-next-window`, `/resume-bootstrap`, `/trigger-next-window`. **До шага 6** (протокол 2 хаба / воркера):
+`GET /worker/counts`, `POST /gpu/task/result`, `POST /gpu/task/error`. Также не трогались: `src/legacy` пакета
+оркестрации и хост-сервисы legacy (шаг 7), read-repair в `GET /book` (пакет editor).
+
+- Этап 3: `vbook` как слой `generate` (задача H) — затем удаляются `progress-stream`, `cancel-worker`, `bootstrap*`.
 
 ## 12. Этапы
 

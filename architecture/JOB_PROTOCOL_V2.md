@@ -1,6 +1,13 @@
 # JOB PROTOCOL V2 — Contract Freeze (Phase 9A)
 
-**Status:** CURRENT / FROZEN
+> **REMOVED 2026-11-28** (ORCHESTRATION_V2 §12, legacy removal step 6): worker bundle 3.0.0
+> and gpu-hub v0.4.0 no longer speak Job Protocol v2 (`/task`, `/task/next`, `/task/result`,
+> `/task/error`, `/beacon`, `/queue/clear`; `job-protocol-v2.cjs` removed from the worker
+> bundle). The backend side (`/gpu/task/*`, task-handler) goes in step 7. This document is
+> **historical**; the live worker ↔ hub ↔ backend contract is protocol 3 —
+> `ORCHESTRATION_V2.md` §8.
+
+**Status:** HISTORICAL (was CURRENT / FROZEN until 2026-11-28)
 **protocol_version = 2** (int, не менять в рамках Phase 9)
 **Date:** 2026-09-06
 **Baseline:** HEAD `019bd843` (Phase 9 readiness audit)

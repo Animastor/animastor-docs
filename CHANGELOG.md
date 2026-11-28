@@ -6,6 +6,26 @@ All notable changes to Animastor are documented here.
 
 ## 2026-11-28
 
+### Протокол 2 удалён в хабе и воркере — шаг 6 этапа 4 (ветки `chore/remove-protocol-v2`, не влиты)
+
+- **Воркер 3.0.0** (animastor-worker `0d979ff`): только протокол 3. Удалены `WORKER_PROTOCOL`, `job-protocol-v2.cjs`,
+  `tools/sync-protocol.cjs`, `GET /task/next`, `POST /task/result`, `POST /task/error`, `runV2Task`, `POST /beacon`.
+  Лог старта `Protocol: 3`; маркеры инсталлятора «Hub heartbeat accepted — worker is ONLINE» / «Beacon failed» теперь
+  пишет `/v3/beacon`. Тесты 97/0.
+- **Хаб v0.4.0** (animastor-gpu-hub `938bb38` — перепин, `50feded` — удаление): `POST /task`, `GET /task/next`,
+  `POST /task/result`, `POST /task/error`, `POST /beacon`, `DELETE /queue/clear` → `404`; Redis-семейства протокола 2
+  и пересылка в backend `/gpu/task/*` удалены, `@animastor/contracts` убран; `/v3/beacon` пишет реестр
+  `gpu-hub:workers`, `/health` → `{gpus}`. Следующий релизный тег — `v0.4.0`. Тесты 46/0.
+- **Бандл:** `artifacts.lock.json` — воркер 3.0.0; install-manifests из animastor-backend `8ee3b8c` (ветка,
+  изменены только три манифеста: без `job-protocol-v2.cjs` в `worker_bundle.files`). Решение владельца 28.11:
+  правка манифестов — веткой в backend, код backend не трогать.
+- **Backend** не менялся (`/gpu/task/*`, task-handler — шаг 7).
+- **Сквозной прогон:** backend + настоящий хаб ветки + бандл 3.0.0 + мок ComfyUI — аудио от `/generate` до `done`;
+  `/generate/stop` → cancel в `/v3/beacon` → `/interrupt`, PUT нет (`reports/2026-11-28/remove-protocol-v2-e2e/`).
+- Нормативно — `architecture/ORCHESTRATION_V2.md` §8.3, §8.4 («Как сделано (этап 4, шаг 6)», установка воркера 3.0.0),
+  §12; баннеры «historical» в `GPU_HUB_CONTRACT.md` (§16 обновлён) и `JOB_PROTOCOL_V2.md`.
+  Отчёт: `reports/2026-11-28/remove-protocol-v2.md`.
+
 ### Удалены legacy-эндпоинты генерации и импорта (ветки `chore/remove-legacy-endpoints`, не влиты)
 
 - **Backend:** удалены `POST /api/v1/generate`, `POST /book/:id/generate-next`, `POST /book/load-vbook`,

@@ -26,6 +26,24 @@ All notable changes to Animastor are documented here.
   §12; баннеры «historical» в `GPU_HUB_CONTRACT.md` (§16 обновлён) и `JOB_PROTOCOL_V2.md`.
   Отчёт: `reports/2026-11-28/remove-protocol-v2.md`.
 
+### Release — протокол 2 удалён (hub v0.4.0, worker 3.0.0)
+
+- **Merge:** worker `1fee9ff` (ветка `0d979ff`), backend `ffc9a36` (ветка `8ee3b8c` + `a68824a` — `min_version` 3.0.0
+  в трёх манифестах), hub `0d8486b` (`50feded` + перепин `e29b43b`), docs — этот коммит; deploy `0553ff6`
+  (merge `6c70200`, только строка `image:` gpu-hub). `main` до merge не сдвигался ни в одном репо.
+- **Образ:** `ghcr.io/animastor/animastor-gpu-hub@sha256:ec1c206883f2b556ba88ab600a77f011363506eae97d980432fba92ec5aa37ea`
+  (`image_tag` `v0.4.0`), revision = merge `0d8486b`.
+- **Пин:** worker `1fee9ff`, backend `ffc9a36`; worker-bundle 3.0.0, 8 файлов, `20c3ff9a…`; install-manifests
+  `05ba04c5…` (min_version 3.0.0). `BACKEND_URL` хаба не менялся — решение владельца.
+- **Перед merge (прод, чтение):** `HLEN animastor:worker-auth` = 0, ключей `animastor:queue:*` нет.
+- **Проверки на проде:** `GET /gpu/health` → 200 `{"gpus":0}`; `POST /gpu/task` и `GET /gpu/task/next` → 404;
+  `GET /gpu/v3/task/next` без токена → 401; `GET /gpu/worker-bundle/sha256` → `version 3.0.0`;
+  `GET /gpu/installer/sha256` → 200 (0.2.11); лог хаба без ошибок; backend (id `7109677b…`, старт 12:22:58Z)
+  не перезапускался. Откат — revert deploy-коммита → `sha256:55659364…`.
+- **Тесты:** backend main `4314 passing / 29 pending / 0 failing`, пакеты 10/10; хаб 46/0; инсталлятор — известный
+  набор ✗, тест реального бандла после `git pull` в `src/animastor-worker` зелёный.
+- Отчёт: `reports/2026-11-28/remove-protocol-v2-release.md`.
+
 ### Удалены legacy-эндпоинты генерации и импорта (ветки `chore/remove-legacy-endpoints`, не влиты)
 
 - **Backend:** удалены `POST /api/v1/generate`, `POST /book/:id/generate-next`, `POST /book/load-vbook`,

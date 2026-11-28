@@ -6,7 +6,7 @@ All notable changes to Animastor are documented here.
 
 ## 2026-11-27
 
-### layer-config → PG `book_layer_config` (ветки `feat/layer-config-pg`, не влиты)
+### layer-config → PG `book_layer_config` (ветки `feat/layer-config-pg`)
 
 - **Хранилище layer-config — только PG:** таблица хоста `book_layer_config` (`book_id` PK → `books` ON DELETE CASCADE,
   `config jsonb`, `updated_at timestamptz`), хост-миграция в `schema.js` (не `gen/sql/007`: таблицу читает и пишет
@@ -15,7 +15,7 @@ All notable changes to Animastor are documented here.
 - **Redis:** `animastor:layer-config:*` не читается и не пишется; `restoreFromBooks` и фаза C6 reconcile удалены;
   семейство убрано из реестра владения Redis. API `GET/PUT /layer-config` и стоп слоя при выключении не менялись,
   фронты не трогались.
-- **`@animastor/orchestration` 1.4.4** (не опубликован, готов к публикации; `backend/package.json` остаётся `^1.4.3`):
+- **`@animastor/orchestration` 1.4.4** (опубликован владельцем; backend `^1.4.4` из реестра, заглушка `restoreFromBooks` в адаптере удалена — `e98817e`):
   порт O-10 — только `get`, без C6; сырые чтения Redis-ключа в legacy-рантайме — через порт. Код `gen/*` не менялся.
 - Перенос данных не нужен: на проде 2 ключа, значения совпадают с `book.json` (сверка в отчёте).
 - Нормативно — `architecture/ORCHESTRATION_V2.md` §4.3, §11.1 «layer-config в PG». Отчёт:

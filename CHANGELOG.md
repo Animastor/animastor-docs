@@ -4,6 +4,19 @@ All notable changes to Animastor are documented here.
 
 ---
 
+## 2026-11-28
+
+### Release — layer-config в PG (backend `deploy-5dc53a7`, `@animastor/orchestration` 1.4.4)
+
+- **Merge:** backend `5dc53a7` (ветка `3a404c9` + `e98817e` — `^1.4.4` из реестра, заглушка `restoreFromBooks`
+  удалена; approve `fd21f82`), docs `9bc1e52`; deploy `7172331` → merge `2f11a8b` (только строка `image:` backend).
+- **Образ:** `ghcr.io/animastor/animastor-backend@sha256:a4f6069af9b676d14ada5a6af54c8378ae16456360b31b0ba8f33cdfe55f0a62`,
+  revision = merge `5dc53a7`; в образе `@animastor/orchestration` 1.4.4.
+- **Проверки на проде** (только чтение): `/health` 200, `restarts 0`; таблица `book_layer_config` создана, FK → `books`
+  `ON DELETE CASCADE`; в логе ошибок нет, фазы `layer_config_restore` нет. Строки книг появятся при первом чтении
+  конфига (не форсировалось); два старых Redis-ключа layer-config удаляются только после появления и сверки строк.
+- Отчёт: `reports/2026-11-28/layer-config-pg-release.md`.
+
 ## 2026-11-27
 
 ### layer-config → PG `book_layer_config` (ветки `feat/layer-config-pg`)

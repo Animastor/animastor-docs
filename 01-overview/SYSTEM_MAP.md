@@ -140,7 +140,7 @@ Truth is intentionally split across three stores (this is explicitly documented 
 - GPU queues: `animastor:queue:{audio|image|video}`, `animastor:running`, `animastor:result:*`, dedup `animastor:job:*`.
 - Scene state: `animastor:asset-state:*` (per-asset, canonical, HASH), `animastor:iu-progress:*`, `animastor:chunk:*`, `animastor:chunks:*`.
 - Dispatch/coordination: `animastor:dispatch-lease:*`, `animastor:dispatch-completed:*`, `animastor:runtime:*`, `animastor:*-lock:*`, `animastor:worker:heartbeat:*`.
-- Config/scope: `animastor:layer-config:*`, `animastor:gen-scope:*`, `animastor:active-scenes`.
+- Config/scope: `animastor:gen-scope:*`, `animastor:active-scenes`. Per-book layer-config is not in Redis since 2026-11-27 — PG `book_layer_config` (`architecture/ORCHESTRATION_V2.md` §11.1).
 
 ### 4.3 Filesystem
 
